@@ -116,6 +116,18 @@ th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertic
 th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
 td.num,th.num{white-space:nowrap}
 .empty{border:1px dashed var(--line);border-radius:12px;padding:18px;color:var(--muted);text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-h{font-size:11px;color:var(--muted);text-align:center;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding-bottom:2px}
+.cal-d{appearance:none;aspect-ratio:1/1.1;border:1px solid var(--line);border-radius:9px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font:700 14px var(--f-body);color:var(--ink);cursor:pointer;padding:2px;min-width:0;font-variant-numeric:tabular-nums}
+.cal-d.out{visibility:hidden}
+.cal-d.fut{color:var(--muted);background:transparent}
+.cal-d.done{background:color-mix(in srgb,var(--zc) 24%,var(--surface));border-color:var(--zc)}
+.cal-d.today{box-shadow:0 0 0 2px var(--accent)}
+.cal-d.sel{outline:2px solid var(--ink);outline-offset:1px}
+.cal-d small{font-size:10px;font-weight:600;color:var(--muted);line-height:1}
+.cal-d.done small{color:var(--ink)}
+.cal-leg{display:flex;gap:6px 12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.cal-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 /* abas */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -389,6 +401,7 @@ function vSemana(){const mon=monday(),ti=dow(new Date());const p=S.plan;let tot=
   let h=header('Semana',`${ddmm(mon)} a ${ddmm(addD(mon,6))}`);
   h+=`<section><div class="tiles"><div class="tile"><b class="num">${tot}</b><span>min planejados</span></div><div class="tile"><b class="num">${tk}</b><span>kcal estimadas</span></div><div class="tile"><b class="num">${tz}</b><span>min Z4–Z5</span></div><div class="tile"><b class="num">${p.days.filter((d,i)=>doneOn(iso(addD(mon,i))).length).length}/7</b><span>dias feitos</span></div></div></section>`;
   h+=`<section><div class="week">${rows}</div><div class="muted" style="font-size:13px">Toque num dia para trocar o treino, mudar o tempo ou marcar dia de perna.</div></section>`;
+  h+=calSec();
   h+=`<section><h2>Montar a semana</h2><div class="card"><div class="field"><label>Foco</label>${chips('foco',Object.entries(FOCOS).map(([k,v])=>[k,v.nome]),S.settings.foco)}</div>
     <div class="field"><label for="def-t">Tempo padrão por dia</label><div class="slider"><input id="def-t" type="range" min="20" max="90" step="5" value="${S.settings.defMin}" data-in="def"><output class="num" id="def-t-o">${S.settings.defMin} min</output></div></div>
     <div class="row"><button class="btn pri wide" data-a="gen-week">Gerar nova semana</button></div>
@@ -412,6 +425,26 @@ function sheetChoose(i){let f=ui.chooseI||0;const all=[...S.custom.map(c=>({src:
   <div class="list">${list.map(([r,w])=>`<button class="opt" data-a="pick" data-v='${esc(JSON.stringify({i,r}))}'><div><div class="nm">${w.custom?'★ ':''}${esc(w.nome)}</div><div class="meta num"><span>${mins(w.blocks)} min</span><span>${INT[w.i]}</span><span>${esc(w.cat)}</span></div></div>${prof(w.blocks)}</button>`).join('')}</div>`;
   ui.chooseDay=i;openSheet(h,true)}
 
+const CATZ={'Recuperação':1,'Base':2,'Tempo':3,'Misto':3,'Limiar':4,'Força':4,'VO₂':5,'Sprint':5,'Teste':5};
+const histZ=x=>CATZ[x.cat]||(x.rpe?(x.rpe<=3?1:x.rpe<=5?2:x.rpe<=7?3:x.rpe<=8?4:5):2);
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function calSec(){if(!ui.calM){const d=new Date();ui.calM=new Date(d.getFullYear(),d.getMonth(),1,12)}if(!ui.calSel)ui.calSel=today();
+  const m=ui.calM,y=m.getFullYear(),mo=m.getMonth(),n=new Date(y,mo+1,0).getDate(),off=dow(m),td=today();
+  const ms=`${y}-${String(mo+1).padStart(2,'0')}`,mh=S.hist.filter(x=>x.date.startsWith(ms));
+  let cells=DN.map(d=>`<div class="cal-h">${d.slice(0,3)}</div>`).join('')+'<div class="cal-d out"></div>'.repeat(off);
+  for(let d=1;d<=n;d++){const ds=`${ms}-${String(d).padStart(2,'0')}`,hs=doneOn(ds),mn=hs.reduce((a,x)=>a+x.min,0),z=hs.length?Math.max(...hs.map(histZ)):0;
+    cells+=`<button class="cal-d${hs.length?' done':''}${ds>td?' fut':''}${ds===td?' today':''}${ds===ui.calSel?' sel':''}" data-a="cal-day" data-v="${ds}"${z?` style="--zc:var(--z${z})"`:''} aria-label="${d} de ${MESES[mo]}${hs.length?`, ${mn} minutos`:''}">${d}${hs.length?`<small>${mn}′</small>`:''}</button>`}
+  const dias=new Set(mh.map(x=>x.date)).size;
+  return`<section><div class="row between"><h2>Calendário</h2><div class="row" style="gap:6px"><button class="btn sm" data-a="cal-mv" data-v="-1" aria-label="Mês anterior">‹</button><button class="btn sm" data-a="cal-mv" data-v="1" aria-label="Próximo mês">›</button></div></div>
+  <div class="card"><div class="row between"><h3>${MESES[mo]} ${y}</h3><span class="muted num" style="font-size:13px">${dias} ${dias===1?'dia':'dias'} · ${mh.reduce((a,x)=>a+x.min,0)} min · ${mh.reduce((a,x)=>a+(x.kcal||0),0)} kcal</span></div>
+  <div class="cal">${cells}</div>
+  <div class="cal-leg">${[1,2,3,4,5].map(z=>`<span><i style="background:var(--z${z})"></i>Z${z}</span>`).join('')}<span>cor = treino mais forte do dia</span></div></div>
+  <div id="cal-det">${calDet()}</div></section>`}
+function calDet(){const ds=ui.calSel,d=fromIso(ds),hs=doneOn(ds);let h=`<div class="eyebrow" style="margin-bottom:6px">${DNL[dow(d)]}, ${ddmm(d)}</div>`;
+  if(hs.length)return h+'<div class="list">'+hs.map(x=>`<div class="card" style="gap:6px;border-left:5px solid var(--z${histZ(x)})"><h3>${esc(x.nome)}</h3><div class="meta num"><span><b>${x.min}</b> min</span><span><b>${x.kcal||0}</b> kcal</span><span><b>${x.z45||0}</b> min Z4–Z5</span><span>RPE <b>${x.rpe||'–'}</b></span></div>${x.nota?`<div style="font-size:14px">${esc(x.nota)}</div>`:''}</div>`).join('')+'</div>';
+  const mon=iso(monday()),i=Math.round((fromIso(ds)-fromIso(mon))/864e5);
+  if(i>=0&&i<7&&ds>=today()){const w=getW(S.plan.days[i]);return h+`<div class="empty">Programado: <b>${w?esc(w.nome):'sem treino'}</b>${w?` · ${mins(w.blocks)} min`:''}</div>`}
+  return h+`<div class="empty">${ds>today()?'Dia ainda não chegou.':'Nenhum treino registrado neste dia.'}</div>`}
 /* ---------- Biblioteca ---------- */
 function vBib(){let h=header('Biblioteca',`${TPL.length} modelos que se ajustam ao seu tempo`);
   h+=`<section><div class="card"><div class="field"><label for="lib-t">Duração alvo</label><div class="slider"><input id="lib-t" type="range" min="20" max="120" step="5" value="${ui.libT}" data-in="libT"><output class="num" id="lib-t-o">${ui.libT} min</output></div></div>
@@ -600,6 +633,8 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'pl-play':plToggle();break;
   case'pl-prev':plJump(-1);break;
   case'pl-next':plJump(1);break;
+  case'cal-mv':{const m=ui.calM;ui.calM=new Date(m.getFullYear(),m.getMonth()+(+v),1,12);render();break}
+  case'cal-day':ui.calSel=v;document.querySelectorAll('.cal-d.sel').forEach(e=>e.classList.remove('sel'));t.classList.add('sel');document.getElementById('cal-det').innerHTML=calDet();break;
   case'pl-voz':voz=!voz;try{localStorage.setItem('gl_voz',voz?'1':'0')}catch(e){}t.textContent=voz?'Voz: on':'Voz: off';if(!voz)try{speechSynthesis.cancel()}catch(e){}break;
   case'pl-end':if(P.el>60)finishPlayer(false);else closePlayer();break;
   case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};break}
