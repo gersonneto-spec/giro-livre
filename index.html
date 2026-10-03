@@ -128,6 +128,11 @@ td.num,th.num{white-space:nowrap}
 .cal-d.done small{color:var(--ink)}
 .cal-leg{display:flex;gap:6px 12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .cal-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.tip{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.35}
+.tip b{font-weight:700}
+.rpe-tip{font-size:14px;color:var(--ink);min-height:1.4em}
+.player>*{flex-shrink:0}
+.player .ctrl{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));background:var(--bg);padding-block:8px calc(16px + env(safe-area-inset-bottom,0px));margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));z-index:2}
 /* abas */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -536,7 +541,7 @@ function weekChart(ws){const W=640,H=170,pl=34,pb=24,pt=12;const mx=Math.max(60,
 function sheetManual(){const m=ui.histMan||{rpe:6};openSheet(`<div class="sheet-h"><h2>Registrar sessão</h2><button class="x" data-a="close" aria-label="Fechar">×</button></div>
   <div class="field"><label for="mn-nome">Treino</label><input id="mn-nome" type="text" value="Pedal livre"></div>
   <div class="grid2"><div class="field"><label for="mn-min">Minutos</label><input id="mn-min" type="number" min="5" max="300" value="40"></div><div class="field"><label for="mn-date">Data</label><input id="mn-date" type="date" value="${today()}"></div></div>
-  <div class="field"><label>Esforço percebido (RPE)</label><div class="rpe">${[1,2,3,4,5,6,7,8,9,10].map(v=>`<button class="chip" data-a="rpe" data-v="${v}" aria-pressed="${m.rpe===v}">${v}</button>`).join('')}</div></div>
+  <div class="field"><label>Esforço percebido (RPE)</label><div class="rpe">${[1,2,3,4,5,6,7,8,9,10].map(v=>`<button class="chip" data-a="rpe" data-v="${v}" aria-pressed="${m.rpe===v}">${v}</button>`).join('')}</div><div class="rpe-tip" id="rpe-tip">RPE ${m.rpe}: ${RPED[m.rpe]}</div></div>
   <div class="field"><label for="mn-nota">Nota</label><textarea id="mn-nota"></textarea></div><button class="btn pri" data-a="man-save">Salvar</button>`)}
 
 /* ===================== Folhas ===================== */
@@ -556,6 +561,7 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
   if(full||!el.querySelector('.clock')){el.innerHTML=`<div class="pl-top"><div style="min-width:0"><div class="eyebrow" id="pl-sub"></div><div class="nm">${esc(P.w.nome)}</div></div><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-a="pl-voz" id="pl-voz">${voz?'Voz: on':'Voz: off'}</button><button class="btn sm" data-a="pl-end">Encerrar</button></div></div>
     <div class="band"><div class="cd" id="pl-cd" hidden><span class="cd-l">Troca em</span><span class="cd-n" id="pl-cdn"></span><span class="cd-t" id="pl-cdt"></span></div><div class="row between"><span class="zname" id="pl-z"></span><span class="num muted" id="pl-k" style="font-weight:600"></span></div><div class="clock" id="pl-clock"></div><div class="cmd" id="pl-cmd"></div></div>
     <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
+    <div class="tip" id="pl-tip"></div>
     <div class="queue" id="pl-q"></div>
     <div class="tl">${prof(P.bl)}<div class="mark" id="pl-mark"></div></div>
     <div class="row between num" style="font-size:13px"><span id="pl-el"></span><span id="pl-rem"></span></div>
@@ -564,11 +570,17 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
   $('pl-sub').textContent=`${P.run?'Em andamento':(P.el>0?'Pausado':'Pronto para começar')} · ${kcal(P.bl)} kcal previstas`;
   $('pl-z').textContent=k.p===POS.FB?'Fora da bike':`Z${k.z} · ${ZN[k.z]}`;$('pl-k').textContent=`Bloco ${P.idx+1}/${P.bl.length}`;
   $('pl-clock').textContent=fmt(Math.ceil(P.left));$('pl-cmd').textContent=k.c;$('pl-rpm').textContent=k.rpm;$('pl-r').textContent=k.r;$('pl-p').textContent=k.p;
+  {const rt=rpmTip(k.rpm);$('pl-tip').innerHTML=k.p===POS.FB?`<span>${esc(k.c)}</span>`:`<span><b>Esforço RPE ${ZRPE[k.z]}</b> · ${ZFEEL[k.z]}</span>${rt?`<span><b>Cadência ${esc(k.rpm)} rpm</b> · ${rt}</span>`:''}`}
   const qs=P.bl.slice(P.idx+1,P.idx+4);let acc=P.left;
   $('pl-q').innerHTML=qs.length?'<div class="eyebrow">Próximos blocos</div>'+qs.map(x=>{const st=acc;acc+=x.d;return`<div class="qi" style="border-left-color:var(--z${x.z})"><span class="num t">em ${fmt(Math.ceil(st))}</span><span class="zp" style="background:var(--z${x.z})">Z${x.z}</span><div><b class="num">${fmt(x.d)} · ${esc(x.r)} · ${esc(x.rpm)} rpm</b> · ${esc(x.p)}<div class="muted" style="font-size:13px">${esc(x.c)}</div></div></div>`}).join(''):'<div class="next"><b>Último bloco.</b> Termina e registra.</div>';
   {const cs=Math.ceil(P.left),sh=P.run&&k.d>=15&&cs<=5&&cs>=1,c=$('pl-cd');c.hidden=!sh;if(sh){c.style.setProperty('--nx',nx?`var(--z${nx.z})`:'var(--z2)');$('pl-cdn').textContent=cs;$('pl-cdt').textContent=nx?(nx.p===POS.FB?'Fora da bike · '+nx.c:`Z${nx.z} · ${nx.r} · ${nx.rpm} rpm · ${nx.p}`):'Fim do treino'}}
   $('pl-mark').style.left=(passed/tot*100)+'%';$('pl-el').textContent=`${fmt(passed)} feito`;$('pl-rem').textContent=`faltam ${fmt(tot-passed)}`;
   $('pl-play').textContent=P.run?'Pausar':(P.el>0?'Continuar':'Começar')}
+const ZRPE={1:'2–3',2:'4–5',3:'6–7',4:'8',5:'9–10'};
+const ZFEEL={1:'Leve. Respira pelo nariz e conversa fácil.',2:'Confortável. Fala frases inteiras, a perna não queima.',3:'Firme. Frases curtas, a perna começa a esquentar.',4:'Perna queimando e fadigada. Fala 3 a 4 palavras, aguenta alguns minutos.',5:'Muito pesado. Não consegue falar, perna pesada, segura só até o fim do tiro.'};
+const RPED={1:'Quase nada, como ficar sentado.',2:'Muito leve, aquecimento solto.',3:'Leve, respira pelo nariz.',4:'Moderado, conversa normal.',5:'Moderado firme, ainda fala frases inteiras.',6:'Firme, frases curtas, suor começando.',7:'Forte, perna esquentando, fala poucas palavras.',8:'Muito forte, perna queimando e fadigada, só 3 a 4 palavras.',9:'Quase máximo, não fala, perna pesada.',10:'Máximo, não aguentaria nem mais 10 segundos.'};
+function rpmTip(r){r=String(r);if(/máx/.test(r))return'o mais rápido que conseguir, sem quicar no selim';const n=r.match(/\d+/g);if(!n||+n[0]===0)return'';
+  const a=Math.round(n[0]/6),c=n[1]?Math.round(n[1]/6):a;return`≈ ${a}${c!==a?'–'+c:''}${/\+/.test(r)?'+':''} pedaladas a cada 10 s. Conte só a perna direita.`}
 let voz=true;try{voz=localStorage.getItem('gl_voz')!=='0'}catch(e){}
 function say(t){if(!voz)return;try{const u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';u.rate=1.15;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 function plToggle(){if(!P)return;try{speechSynthesis.speak(new SpeechSynthesisUtterance(' '))}catch(e){}if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}try{ac&&ac.resume()}catch(e){}
@@ -583,7 +595,7 @@ function finishPlayer(complete){if(!P)return;P.run=false;clearInterval(timer);lo
   P.res={min:m,kcal:kc,z45:Math.round(P.z/60)};const el=document.getElementById('player');
   el.innerHTML=`<div class="pl-top"><div><div class="eyebrow">${complete?'Treino concluído':'Encerrado antes do fim'}</div><h1>${esc(P.w.nome)}</h1></div></div>
    <div class="tiles"><div class="tile"><b class="num">${m}</b><span>minutos</span></div><div class="tile"><b class="num">${kc}</b><span>kcal</span></div><div class="tile"><b class="num">${P.res.z45}</b><span>min Z4–Z5</span></div><div class="tile"><b class="num">${Math.round(Math.min(1,fr)*100)}%</b><span>do treino</span></div></div>
-   <div class="field"><label>Esforço percebido (RPE)</label><div class="rpe" id="fin-rpe">${[1,2,3,4,5,6,7,8,9,10].map(v=>`<button class="chip" data-a="rpe" data-v="${v}" aria-pressed="false">${v}</button>`).join('')}</div></div>
+   <div class="field"><label>Esforço percebido (RPE)</label><div class="rpe" id="fin-rpe">${[1,2,3,4,5,6,7,8,9,10].map(v=>`<button class="chip" data-a="rpe" data-v="${v}" aria-pressed="false">${v}</button>`).join('')}</div><div class="rpe-tip" id="rpe-tip">Toque na nota para ver o que ela significa.</div></div>
    <div class="field"><label for="fin-nota">Como foi</label><textarea id="fin-nota" placeholder="Energia, pernas, FC, ajuste de resistência"></textarea></div>
    <div class="row" style="margin-top:auto"><button class="btn pri wide" data-a="fin-save">Salvar no histórico</button><button class="btn" data-a="fin-discard">${ui.disc?'Toque de novo':'Descartar'}</button></div>`}
 function closePlayer(){clearInterval(timer);lock(false);P=null;ui.disc=0;const el=document.getElementById('player');el&&el.remove();document.body.style.overflow=''}
@@ -637,7 +649,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'cal-day':ui.calSel=v;document.querySelectorAll('.cal-d.sel').forEach(e=>e.classList.remove('sel'));t.classList.add('sel');document.getElementById('cal-det').innerHTML=calDet();break;
   case'pl-voz':voz=!voz;try{localStorage.setItem('gl_voz',voz?'1':'0')}catch(e){}t.textContent=voz?'Voz: on':'Voz: off';if(!voz)try{speechSynthesis.cancel()}catch(e){}break;
   case'pl-end':if(P.el>60)finishPlayer(false);else closePlayer();break;
-  case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};break}
+  case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};{const tp=document.getElementById('rpe-tip');if(tp)tp.textContent=`RPE ${v}: ${RPED[v]}`}break}
   case'fin-save':{const n=document.getElementById('fin-nota').value.trim();S.hist.push({id:'h'+Date.now().toString(36),ts:Date.now(),date:today(),nome:P.w.nome,cat:P.w.cat,min:P.res.min,kcal:P.res.kcal,z45:P.res.z45,rpe:P.rpe||null,nota:n,cond:P.cond});
     if(S.hist.length>500)S.hist=S.hist.slice(-500);save();closePlayer();render();break}
   case'fin-discard':if(!ui.disc){ui.disc=1;t.textContent='Toque de novo';break}closePlayer();render();break;
