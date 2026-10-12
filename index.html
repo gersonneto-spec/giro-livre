@@ -133,6 +133,9 @@ td.num,th.num{white-space:nowrap}
 .rpe-tip{font-size:14px;color:var(--ink);min-height:1.4em}
 .player>*{flex-shrink:0}
 .player .ctrl{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));background:var(--bg);padding-block:8px calc(16px + env(safe-area-inset-bottom,0px));margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));z-index:2}
+.adj{position:fixed;left:0;right:0;bottom:0;z-index:70;background:var(--bg);border-top:1px solid var(--line);box-shadow:0 -10px 30px rgba(0,0,0,.25);border-radius:18px 18px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;max-width:680px;margin:0 auto}
+.adj input{flex:1}
+.adj .chips .chip{font-size:12.5px;padding:7px 10px}
 /* abas */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -188,7 +191,7 @@ nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:re
 .next b{color:var(--ink)}
 .tl{position:relative}
 .tl .mark{position:absolute;top:-4px;bottom:-4px;width:3px;border-radius:2px;background:var(--ink);transform:translateX(-1px)}
-.ctrl{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;margin-top:auto}
+.ctrl{display:grid;grid-template-columns:.7fr 1.3fr 1.6fr .7fr;gap:8px;margin-top:auto}
 .ctrl .btn{min-height:58px;font-size:16px}
 .rpe{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .rpe .chip{padding:9px 0;text-align:center}
@@ -562,10 +565,14 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
     <div class="band"><div class="cd" id="pl-cd" hidden><span class="cd-l">Troca em</span><span class="cd-n" id="pl-cdn"></span><span class="cd-t" id="pl-cdt"></span></div><div class="row between"><span class="zname" id="pl-z"></span><span class="num muted" id="pl-k" style="font-weight:600"></span></div><div class="clock" id="pl-clock"></div><div class="cmd" id="pl-cmd"></div></div>
     <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
     <div class="tip" id="pl-tip"></div>
+    <div class="adj" id="pl-adj" hidden><div class="sheet-h"><h3>Ajustar treino</h3><button class="x" data-a="adj-close" aria-label="Fechar">×</button></div>
+    <div class="row" style="flex-wrap:nowrap"><input id="adj-txt" type="text" placeholder="Ex.: reduzir descanso" enterkeyhint="go" autocomplete="off"><button class="btn sm" data-a="adj-mic" id="adj-mic">Falar</button><button class="btn sm pri" data-a="adj-go">OK</button></div>
+    <div class="chips">${ADJQ.map(q=>`<button class="chip" data-a="adj-q" data-v="${q}">${q}</button>`).join('')}</div>
+    <div class="rpe-tip" id="adj-msg"></div></div>
     <div class="queue" id="pl-q"></div>
     <div class="tl">${prof(P.bl)}<div class="mark" id="pl-mark"></div></div>
     <div class="row between num" style="font-size:13px"><span id="pl-el"></span><span id="pl-rem"></span></div>
-    <div class="ctrl"><button class="btn" data-a="pl-prev" aria-label="Bloco anterior">◀ Anterior</button><button class="btn go" data-a="pl-play" id="pl-play"></button><button class="btn" data-a="pl-next" aria-label="Próximo bloco">Pular ▶</button></div>`}
+    <div class="ctrl"><button class="btn" data-a="pl-prev" aria-label="Bloco anterior">◀</button><button class="btn pri" data-a="adj-open">Ajustar</button><button class="btn go" data-a="pl-play" id="pl-play"></button><button class="btn" data-a="pl-next" aria-label="Próximo bloco">▶</button></div>`}
   const $=id=>document.getElementById(id);
   $('pl-sub').textContent=`${P.run?'Em andamento':(P.el>0?'Pausado':'Pronto para começar')} · ${kcal(P.bl)} kcal previstas`;
   $('pl-z').textContent=k.p===POS.FB?'Fora da bike':`Z${k.z} · ${ZN[k.z]}`;$('pl-k').textContent=`Bloco ${P.idx+1}/${P.bl.length}`;
@@ -582,6 +589,44 @@ const RPED={1:'Quase nada, como ficar sentado.',2:'Muito leve, aquecimento solto
 function rpmTip(r){r=String(r);if(/máx/.test(r))return'o mais rápido que conseguir, sem quicar no selim';const n=r.match(/\d+/g);if(!n||+n[0]===0)return'';
   const a=Math.round(n[0]/6),c=n[1]?Math.round(n[1]/6):a;return`≈ ${a}${c!==a?'–'+c:''}${/\+/.test(r)?'+':''} pedaladas a cada 10 s. Conte só a perna direita.`}
 let voz=true;try{voz=localStorage.getItem('gl_voz')!=='0'}catch(e){}
+/* ---------- Ajustar treino em andamento ---------- */
+const nrm=s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/₂/g,'2');
+const isCool=x=>/^Volta à calma/.test(x.c);
+const ALIAS=[['hit','express'],['hiit','express'],['express','express'],['tabata','tabata'],['4x4','vo2'],['noruegues','vo2'],['30/15','v3015'],['30 15','v3015'],['40/20','v4020'],['40 20','v4020'],['queima','v4020'],['billat','billat'],['piramide','piramide'],['tiros de 3','tiros3'],['sprint','sprints'],['subida','subida'],['escada','escada'],['forca','forca'],['limiar','limiar'],['sweet','sweet'],['over','overunder'],['montanha','montanha'],['tempo','tempo'],['regenerativ','regen'],['mobilidade','ativa'],['cadencia','basecad'],['drill','drills']];
+function findT(t){for(const [k,id] of ALIAS)if(t.includes(k))return id;let best=null,sc=0;for(const m of TPL){const w=nrm(m.nome).split(/[^a-z0-9]+/).filter(x=>x.length>2);const h=w.filter(x=>t.includes(x)).length/(w.length||1);if(h>sc){sc=h;best=m.id}}return sc>=.5?best:null}
+function coolAt(){for(let j=P.idx+1;j<P.bl.length;j++)if(isCool(P.bl[j]))return j;return P.bl.length}
+function rests(){const r=[];for(let j=P.idx;j<P.bl.length;j++){const x=P.bl[j];if(x.z<=2&&!isCool(x)&&((P.bl[j-1]&&P.bl[j-1].z>=4)||(P.bl[j+1]&&P.bl[j+1].z>=4)))r.push(j)}return r}
+function efforts(){const r=[];for(let j=P.idx+1;j<P.bl.length;j++)if(P.bl[j].z>=4)r.push(j);return r}
+function runCmd(raw){if(!P)return null;const t=nrm(raw),sec=+((t.match(/(\d+)\s*(s\b|seg)/)||[])[1]||0),mi=+((t.match(/(\d+)\s*min/)||[])[1]||0);
+  if(/volta a calma|terminar|acabar|finalizar/.test(t)){const c=coolAt();if(c>=P.bl.length)return'Não há volta à calma pela frente.';const cut=c-P.idx-1;P.bl.splice(P.idx+1,cut);P.idx++;P.left=P.bl[P.idx].d;return`Indo para a volta à calma. ${cut} blocos removidos.`}
+  if(/descanso|recupera|pausa|intervalo/.test(t)){const up=/aument|mais|maior|alonga|estend/.test(t),dn=/reduz|diminu|menos|menor|encurt|corta/.test(t);if(!up&&!dn)return null;
+    const rs=rests();if(!rs.length)return'Não há descansos pela frente.';const o=P.bl[rs[rs.length-1]].d;
+    rs.forEach(j=>{const x=P.bl[j];let n=sec?x.d+(up?sec:-sec):Math.round(x.d*(up?1.25:.75)/5)*5;n=clamp(n,10,600);if(j===P.idx)P.left=clamp(P.left+(n-x.d),3,n);x.d=n});
+    return`${up?'Descanso aumentado':'Descanso reduzido'} em ${rs.length} ${rs.length===1?'bloco':'blocos'} (${fmt(o)} → ${fmt(P.bl[rs[rs.length-1]].d)}).`}
+  if(/carga|resistencia|pesad|leve/.test(t)&&!/inclu|adicion/.test(t)){const up=/aument|mais|sobe|subir|pesad/.test(t),dn=/diminu|menos|baix|reduz|leve/.test(t);if(!up&&!dn)return null;
+    const es=efforts();if(P.bl[P.idx].z>=4)es.unshift(P.idx);if(!es.length)return'Não há tiros pela frente.';const d=up?1:-1;
+    es.forEach(j=>{const x=P.bl[j];x.r=x.r.replace(/R(\d)/g,(m,n)=>'R'+clamp(+n+d,1,8))});return`Carga ${up?'+1':'−1'} nível em ${es.length} ${es.length===1?'tiro':'tiros'} (agora ${P.bl[es[0]].r}).`}
+  if(/tiro|serie|sprint|repeti/.test(t)&&/mais|\+|outro|extra|adicion|inclu/.test(t)&&!findT(t.replace(/sprint/,''))){let e=-1;for(let j=P.bl.length-1;j>=0;j--)if(P.bl[j].z>=4){e=j;break}if(e<0)return'Este treino não tem tiros para repetir.';
+    const pair=[{...P.bl[e]}];if(P.bl[e+1]&&!isCool(P.bl[e+1])&&P.bl[e+1].z<=2)pair.push({...P.bl[e+1]});pair[0].c='Tiro extra, mesma pegada';P.bl.splice(Math.max(e+pair.length,P.idx+1),0,...pair);return`Tiro extra incluído: +${fmt(sum(pair))}.`}
+  if(/tiro|serie|repeti/.test(t)&&/menos|tira|remov|corta|exclu/.test(t)){const es=efforts();if(!es.length)return'Não há tiros pela frente.';const e=es[es.length-1],n=P.bl[e+1]&&!isCool(P.bl[e+1])&&P.bl[e+1].z<=2?2:1;const rm=P.bl.splice(e,n);return`Último tiro removido: −${fmt(sum(rm))}.`}
+  if(/inclu|adicion|coloc|acrescent|bota|poe|mete/.test(t)){const id=findT(t);
+    if(id){const m=TB[id];let bl=buildT(m,clamp(mi||m.min,m.min,m.max)).map(x=>({...x}));const f=bl.findIndex(x=>x.z>=4);let l=-1;bl.forEach((x,i)=>{if(x.z>=4)l=i});
+      bl=f>=0?bl.slice(f,Math.min(l+2,bl.length)).filter(x=>!isCool(x)):bl.filter(x=>!isCool(x)).slice(2);const at=coolAt();P.bl.splice(at,0,...bl);return`${m.nome} incluído antes da volta à calma: +${fmt(sum(bl))}.`}
+    if(mi){const at=coolAt();P.bl.splice(at,0,b(mi*M,2,'90','R3','SP','Bloco extra, ritmo constante'));return`+${mi} min em Z2 antes da volta à calma.`}}
+  if(/(mais|estend|aument|prolong)/.test(t)&&mi){const at=coolAt();P.bl.splice(at,0,b(mi*M,2,'90','R3','SP','Bloco extra, ritmo constante'));return`+${mi} min em Z2 antes da volta à calma.`}
+  if(/pul|proximo/.test(t)){plJump(1);return'Pulei para o próximo bloco.'}
+  return null}
+const ADJQ=['Reduzir descanso','Aumentar descanso','Mais um tiro','Menos um tiro','Aumentar carga','Diminuir carga','Mais 5 min','Incluir HIIT Express no final','Ir para volta à calma'];
+function adjOpen(){const a=document.getElementById('pl-adj');a.hidden=false;document.getElementById('adj-msg').textContent='Fale ou digite o que quer mudar. O cronômetro continua rodando.'}
+function adjDo(tx){const m=document.getElementById('adj-msg');if(!tx||!tx.trim())return;const r=runCmd(tx);
+  if(r){drawPlayer(true);document.getElementById('pl-adj').hidden=false;document.getElementById('adj-msg').textContent='✓ '+r;say(r.split('.')[0])}
+  else m.textContent='Não entendi. Tente: "reduzir descanso", "mais um tiro", "aumentar carga", "incluir HIIT Express no final", "mais 5 min".'}
+function adjListen(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,m=document.getElementById('adj-msg');
+  if(!SR){m.textContent='Toque no campo e use o microfone do teclado para ditar.';document.getElementById('adj-txt').focus();return}
+  try{speechSynthesis.cancel()}catch(e){}const r=new SR(),bt=document.getElementById('adj-mic');r.lang='pt-BR';r.interimResults=false;r.maxAlternatives=1;bt.textContent='Ouvindo…';
+  r.onresult=e=>{const tx=e.results[0][0].transcript;document.getElementById('adj-txt').value=tx;adjDo(tx)};
+  r.onerror=()=>{m.textContent='Não captei o áudio. Tente de novo ou use o microfone do teclado.'};r.onend=()=>{bt.textContent='Falar'};
+  try{r.start()}catch(e){bt.textContent='Falar';m.textContent='Microfone indisponível. Use o microfone do teclado.'}}
 function say(t){if(!voz)return;try{const u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';u.rate=1.15;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 function plToggle(){if(!P)return;try{speechSynthesis.speak(new SpeechSynthesisUtterance(' '))}catch(e){}if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}try{ac&&ac.resume()}catch(e){}
   P.run=!P.run;if(P.run){P.last=performance.now();timer=setInterval(tick,200);lock(true);beep(660,.12)}else{clearInterval(timer);lock(false)}drawPlayer()}
@@ -647,6 +692,11 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'pl-next':plJump(1);break;
   case'cal-mv':{const m=ui.calM;ui.calM=new Date(m.getFullYear(),m.getMonth()+(+v),1,12);render();break}
   case'cal-day':ui.calSel=v;document.querySelectorAll('.cal-d.sel').forEach(e=>e.classList.remove('sel'));t.classList.add('sel');document.getElementById('cal-det').innerHTML=calDet();break;
+  case'adj-open':adjOpen();break;
+  case'adj-close':document.getElementById('pl-adj').hidden=true;break;
+  case'adj-mic':adjListen();break;
+  case'adj-go':adjDo(document.getElementById('adj-txt').value);break;
+  case'adj-q':adjDo(v);break;
   case'pl-voz':voz=!voz;try{localStorage.setItem('gl_voz',voz?'1':'0')}catch(e){}t.textContent=voz?'Voz: on':'Voz: off';if(!voz)try{speechSynthesis.cancel()}catch(e){}break;
   case'pl-end':if(P.el>60)finishPlayer(false);else closePlayer();break;
   case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};{const tp=document.getElementById('rpe-tip');if(tp)tp.textContent=`RPE ${v}: ${RPED[v]}`}break}
@@ -663,7 +713,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
     S.hist.push({id:'h'+Date.now().toString(36),ts:fromIso(g('mn-date')||today()).getTime(),date:g('mn-date')||today(),nome:g('mn-nome')||'Pedal livre',cat:'Livre',min:mn,kcal:Math.round(met*S.settings.peso*mn/60),z45:0,rpe:rp,nota:g('mn-nota').trim()});save();closeSheet();render();break}
   case'h-del':if(ui.hdel!==v){ui.hdel=v;render();break}S.hist=S.hist.filter(x=>x.id!==v);ui.hdel=null;save();render();break;
   }});
-document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.tap')){e.preventDefault();e.target.click()}if(e.key==='Escape'&&!P)closeSheet()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='adj-txt'){e.preventDefault();adjDo(e.target.value);return}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.tap')){e.preventDefault();e.target.click()}if(e.key==='Escape'&&!P)closeSheet()});
 document.addEventListener('input',e=>{const t=e.target;
   if(t.dataset.in==='T'){ui.T=+t.value;document.getElementById('hoje-t-o').textContent=ui.T+' min';document.getElementById('sug').innerHTML=sugList()}
   else if(t.dataset.in==='libT'){ui.libT=+t.value;document.getElementById('lib-t-o').textContent=ui.libT+' min';document.getElementById('liblist').innerHTML=libList()}
