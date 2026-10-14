@@ -133,9 +133,18 @@ td.num,th.num{white-space:nowrap}
 .rpe-tip{font-size:14px;color:var(--ink);min-height:1.4em}
 .player>*{flex-shrink:0}
 .player .ctrl{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));background:var(--bg);padding-block:8px calc(16px + env(safe-area-inset-bottom,0px));margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));z-index:2}
-.adj{position:fixed;left:0;right:0;bottom:0;z-index:70;background:var(--bg);border-top:1px solid var(--line);box-shadow:0 -10px 30px rgba(0,0,0,.25);border-radius:18px 18px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;max-width:680px;margin:0 auto}
-.adj input{flex:1}
-.adj .chips .chip{font-size:12.5px;padding:7px 10px}
+.qa{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding:0 16px 2px}
+.qa::-webkit-scrollbar{display:none}
+.qa .btn{flex:none;min-height:42px;padding:8px 13px;font-size:14px;white-space:nowrap}
+.ask{display:flex;gap:6px}
+.ask input{flex:1;min-width:0}
+.toast{position:fixed;left:12px;right:12px;top:calc(8px + env(safe-area-inset-top,0px));z-index:80;max-width:656px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.toast .tt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:14px;line-height:1.3}
+.toast .tt b{font-size:15px}
+.toast .btn{background:transparent;color:inherit;border-color:currentColor;min-height:36px;padding:6px 12px;font-size:13px}
+.toast.err{background:var(--z5);color:#fff}
+.queue.chg .qi{animation:qflash 1.6s ease-out}
+@keyframes qflash{0%{background:color-mix(in srgb,var(--accent) 35%,var(--surface))}100%{background:var(--surface)}}
 /* abas */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -191,7 +200,7 @@ nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:re
 .next b{color:var(--ink)}
 .tl{position:relative}
 .tl .mark{position:absolute;top:-4px;bottom:-4px;width:3px;border-radius:2px;background:var(--ink);transform:translateX(-1px)}
-.ctrl{display:grid;grid-template-columns:.7fr 1.3fr 1.6fr .7fr;gap:8px;margin-top:auto}
+.ctrl{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;margin-top:auto}
 .ctrl .btn{min-height:58px;font-size:16px}
 .rpe{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .rpe .chip{padding:9px 0;text-align:center}
@@ -561,27 +570,25 @@ function startPlayer(ref,cond){const w=getW(ref);if(!w||!w.blocks.length)return;
   document.body.style.overflow='hidden';drawPlayer(true)}
 function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)return;const k=P.bl[P.idx],nx=P.bl[P.idx+1],tot=sum(P.bl);
   const passed=sum(P.bl.slice(0,P.idx))+(k.d-P.left);el.style.setProperty('--cur',`var(--z${k.z})`);
-  if(full||!el.querySelector('.clock')){el.innerHTML=`<div class="pl-top"><div style="min-width:0"><div class="eyebrow" id="pl-sub"></div><div class="nm">${esc(P.w.nome)}</div></div><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-a="pl-voz" id="pl-voz">${voz?'Voz: on':'Voz: off'}</button><button class="btn sm" data-a="pl-end">Encerrar</button></div></div>
+  if(full||!el.querySelector('.clock')){el.innerHTML=`<div class="toast" id="pl-toast" hidden></div><div class="pl-top"><div style="min-width:0"><div class="eyebrow" id="pl-sub"></div><div class="nm">${esc(P.w.nome)}</div></div><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-a="pl-end">Encerrar</button></div></div>
     <div class="band"><div class="cd" id="pl-cd" hidden><span class="cd-l">Troca em</span><span class="cd-n" id="pl-cdn"></span><span class="cd-t" id="pl-cdt"></span></div><div class="row between"><span class="zname" id="pl-z"></span><span class="num muted" id="pl-k" style="font-weight:600"></span></div><div class="clock" id="pl-clock"></div><div class="cmd" id="pl-cmd"></div></div>
     <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
     <div class="tip" id="pl-tip"></div>
-    <div class="adj" id="pl-adj" hidden><div class="sheet-h"><h3>Ajustar treino</h3><button class="x" data-a="adj-close" aria-label="Fechar">×</button></div>
-    <div class="row" style="flex-wrap:nowrap"><input id="adj-txt" type="text" placeholder="Ex.: reduzir descanso" enterkeyhint="go" autocomplete="off"><button class="btn sm" data-a="adj-mic" id="adj-mic">Falar</button><button class="btn sm pri" data-a="adj-go">OK</button></div>
-    <div class="chips">${ADJQ.map(q=>`<button class="chip" data-a="adj-q" data-v="${q}">${q}</button>`).join('')}</div>
-    <div class="rpe-tip" id="adj-msg"></div></div>
+    <div class="qa" id="pl-qa"><button class="btn sm pri" data-a="ask">Digitar pedido</button>${QA.map(([l,c])=>`<button class="btn sm" data-a="qa" data-v="${c}">${l}</button>`).join('')}</div>
+    <div class="ask" id="pl-ask" hidden><input id="adj-txt" type="text" placeholder="Ex.: reduzir descanso em 30 s" enterkeyhint="go" autocomplete="off"><button class="btn sm pri" data-a="adj-go">OK</button></div>
     <div class="queue" id="pl-q"></div>
     <div class="tl">${prof(P.bl)}<div class="mark" id="pl-mark"></div></div>
-    <div class="row between num" style="font-size:13px"><span id="pl-el"></span><span id="pl-rem"></span></div>
-    <div class="ctrl"><button class="btn" data-a="pl-prev" aria-label="Bloco anterior">◀</button><button class="btn pri" data-a="adj-open">Ajustar</button><button class="btn go" data-a="pl-play" id="pl-play"></button><button class="btn" data-a="pl-next" aria-label="Próximo bloco">▶</button></div>`}
+    <div class="row between num" style="font-size:15px;font-weight:600"><span id="pl-el"></span><span id="pl-rem"></span></div>
+    <div class="ctrl"><button class="btn" data-a="pl-prev" aria-label="Bloco anterior">◀ Anterior</button><button class="btn go" data-a="pl-play" id="pl-play"></button><button class="btn" data-a="pl-next" aria-label="Próximo bloco">Pular ▶</button></div>`}
   const $=id=>document.getElementById(id);
-  $('pl-sub').textContent=`${P.run?'Em andamento':(P.el>0?'Pausado':'Pronto para começar')} · ${kcal(P.bl)} kcal previstas`;
+  $('pl-sub').textContent=`${P.run?'Em andamento':(P.el>0?'Pausado':'Pronto para começar')} · ${fmt(P.el)} de ${fmt(plTot())}`;
   $('pl-z').textContent=k.p===POS.FB?'Fora da bike':`Z${k.z} · ${ZN[k.z]}`;$('pl-k').textContent=`Bloco ${P.idx+1}/${P.bl.length}`;
   $('pl-clock').textContent=fmt(Math.ceil(P.left));$('pl-cmd').textContent=k.c;$('pl-rpm').textContent=k.rpm;$('pl-r').textContent=k.r;$('pl-p').textContent=k.p;
   {const rt=rpmTip(k.rpm);$('pl-tip').innerHTML=k.p===POS.FB?`<span>${esc(k.c)}</span>`:`<span><b>Esforço RPE ${ZRPE[k.z]}</b> · ${ZFEEL[k.z]}</span>${rt?`<span><b>Cadência ${esc(k.rpm)} rpm</b> · ${rt}</span>`:''}`}
   const qs=P.bl.slice(P.idx+1,P.idx+4);let acc=P.left;
   $('pl-q').innerHTML=qs.length?'<div class="eyebrow">Próximos blocos</div>'+qs.map(x=>{const st=acc;acc+=x.d;return`<div class="qi" style="border-left-color:var(--z${x.z})"><span class="num t">em ${fmt(Math.ceil(st))}</span><span class="zp" style="background:var(--z${x.z})">Z${x.z}</span><div><b class="num">${fmt(x.d)} · ${esc(x.r)} · ${esc(x.rpm)} rpm</b> · ${esc(x.p)}<div class="muted" style="font-size:13px">${esc(x.c)}</div></div></div>`}).join(''):'<div class="next"><b>Último bloco.</b> Termina e registra.</div>';
   {const cs=Math.ceil(P.left),sh=P.run&&k.d>=15&&cs<=5&&cs>=1,c=$('pl-cd');c.hidden=!sh;if(sh){c.style.setProperty('--nx',nx?`var(--z${nx.z})`:'var(--z2)');$('pl-cdn').textContent=cs;$('pl-cdt').textContent=nx?(nx.p===POS.FB?'Fora da bike · '+nx.c:`Z${nx.z} · ${nx.r} · ${nx.rpm} rpm · ${nx.p}`):'Fim do treino'}}
-  $('pl-mark').style.left=(passed/tot*100)+'%';$('pl-el').textContent=`${fmt(passed)} feito`;$('pl-rem').textContent=`faltam ${fmt(tot-passed)}`;
+  $('pl-mark').style.left=(passed/tot*100)+'%';{const rem=P.left+sum(P.bl.slice(P.idx+1));$('pl-el').textContent=`Treino ${fmt(P.el)} de ${fmt(P.el+rem)}`;$('pl-rem').textContent=`faltam ${fmt(rem)}`}
   $('pl-play').textContent=P.run?'Pausar':(P.el>0?'Continuar':'Começar')}
 const ZRPE={1:'2–3',2:'4–5',3:'6–7',4:'8',5:'9–10'};
 const ZFEEL={1:'Leve. Respira pelo nariz e conversa fácil.',2:'Confortável. Fala frases inteiras, a perna não queima.',3:'Firme. Frases curtas, a perna começa a esquentar.',4:'Perna queimando e fadigada. Fala 3 a 4 palavras, aguenta alguns minutos.',5:'Muito pesado. Não consegue falar, perna pesada, segura só até o fim do tiro.'};
@@ -616,18 +623,19 @@ function runCmd(raw){if(!P)return null;const t=nrm(raw),sec=+((t.match(/(\d+)\s*
   if(/(mais|estend|aument|prolong)/.test(t)&&mi){const at=coolAt();P.bl.splice(at,0,b(mi*M,2,'90','R3','SP','Bloco extra, ritmo constante'));return`+${mi} min em Z2 antes da volta à calma.`}
   if(/pul|proximo/.test(t)){plJump(1);return'Pulei para o próximo bloco.'}
   return null}
-const ADJQ=['Reduzir descanso','Aumentar descanso','Mais um tiro','Menos um tiro','Aumentar carga','Diminuir carga','Mais 5 min','Incluir HIIT Express no final','Ir para volta à calma'];
-function adjOpen(){const a=document.getElementById('pl-adj');a.hidden=false;document.getElementById('adj-msg').textContent='Fale ou digite o que quer mudar. O cronômetro continua rodando.'}
-function adjDo(tx){const m=document.getElementById('adj-msg');if(!tx||!tx.trim())return;const r=runCmd(tx);
-  if(r){drawPlayer(true);document.getElementById('pl-adj').hidden=false;document.getElementById('adj-msg').textContent='✓ '+r;say(r.split('.')[0])}
-  else m.textContent='Não entendi. Tente: "reduzir descanso", "mais um tiro", "aumentar carga", "incluir HIIT Express no final", "mais 5 min".'}
-function adjListen(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,m=document.getElementById('adj-msg');
-  if(!SR){m.textContent='Toque no campo e use o microfone do teclado para ditar.';document.getElementById('adj-txt').focus();return}
-  try{speechSynthesis.cancel()}catch(e){}const r=new SR(),bt=document.getElementById('adj-mic');r.lang='pt-BR';r.interimResults=false;r.maxAlternatives=1;bt.textContent='Ouvindo…';
-  r.onresult=e=>{const tx=e.results[0][0].transcript;document.getElementById('adj-txt').value=tx;adjDo(tx)};
-  r.onerror=()=>{m.textContent='Não captei o áudio. Tente de novo ou use o microfone do teclado.'};r.onend=()=>{bt.textContent='Falar'};
-  try{r.start()}catch(e){bt.textContent='Falar';m.textContent='Microfone indisponível. Use o microfone do teclado.'}}
-function say(t){if(!voz)return;try{const u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';u.rate=1.15;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+const QA=[['− Descanso','reduzir descanso'],['+ Descanso','aumentar descanso'],['+ Carga','aumentar carga'],['− Carga','diminuir carga'],['+1 tiro','mais um tiro'],['−1 tiro','menos um tiro'],['+5 min','mais 5 min'],['+ HIIT Express','incluir hiit express'],['Encerrar tiros','ir para volta à calma']];
+let UNDO=null,toastT=null;
+const plTot=()=>P.el+P.left+sum(P.bl.slice(P.idx+1));
+function toast(title,sub,undo,err){const el=document.getElementById('pl-toast');if(!el)return;clearTimeout(toastT);el.className='toast'+(err?' err':'');
+  el.innerHTML=`<div class="tt"><b>${esc(title)}</b>${sub?`<span>${esc(sub)}</span>`:''}</div>${undo?'<button class="btn" data-a="undo">Desfazer</button>':''}`;el.hidden=false;
+  toastT=setTimeout(()=>{el.hidden=true;if(undo)UNDO=null},undo?8000:4500)}
+function adjDo(tx){if(!tx||!tx.trim()||!P)return;const snap={bl:P.bl.map(x=>({...x})),idx:P.idx,left:P.left},t0=plTot(),r=runCmd(tx);
+  if(!r){toast('Não entendi o pedido','Tente: reduzir descanso, mais um tiro, aumentar carga, incluir HIIT Express, mais 5 min',false,true);return}
+  if(P.idx===snap.idx&&JSON.stringify(P.bl)===JSON.stringify(snap.bl)){toast(r.replace(/\.$/,''),'',false,true);return}
+  UNDO=snap;drawPlayer(true);const q=document.getElementById('pl-q');if(q)q.classList.add('chg');
+  const t1=plTot(),dt=t1-t0;toast(r.replace(/\.$/,''),`Treino ${fmt(t0)} → ${fmt(t1)}${dt?` (${dt>0?'+':'−'}${fmt(Math.abs(dt))})`:''}`,true)}
+function adjUndo(){if(!UNDO||!P)return;P.bl=UNDO.bl;P.idx=UNDO.idx;P.left=UNDO.left;UNDO=null;drawPlayer(true);toast('Ajuste desfeito','Treino voltou ao que era antes',false)}
+function say(t){}
 function plToggle(){if(!P)return;try{speechSynthesis.speak(new SpeechSynthesisUtterance(' '))}catch(e){}if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}try{ac&&ac.resume()}catch(e){}
   P.run=!P.run;if(P.run){P.last=performance.now();timer=setInterval(tick,200);lock(true);beep(660,.12)}else{clearInterval(timer);lock(false)}drawPlayer()}
 function tick(){if(!P||!P.run)return;const now=performance.now();let dt=(now-P.last)/1000;P.last=now;
@@ -692,11 +700,10 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'pl-next':plJump(1);break;
   case'cal-mv':{const m=ui.calM;ui.calM=new Date(m.getFullYear(),m.getMonth()+(+v),1,12);render();break}
   case'cal-day':ui.calSel=v;document.querySelectorAll('.cal-d.sel').forEach(e=>e.classList.remove('sel'));t.classList.add('sel');document.getElementById('cal-det').innerHTML=calDet();break;
-  case'adj-open':adjOpen();break;
-  case'adj-close':document.getElementById('pl-adj').hidden=true;break;
-  case'adj-mic':adjListen();break;
+  case'qa':adjDo(v);break;
+  case'ask':{const a=document.getElementById('pl-ask');a.hidden=!a.hidden;if(!a.hidden)document.getElementById('adj-txt').focus();break}
   case'adj-go':adjDo(document.getElementById('adj-txt').value);break;
-  case'adj-q':adjDo(v);break;
+  case'undo':adjUndo();break;
   case'pl-voz':voz=!voz;try{localStorage.setItem('gl_voz',voz?'1':'0')}catch(e){}t.textContent=voz?'Voz: on':'Voz: off';if(!voz)try{speechSynthesis.cancel()}catch(e){}break;
   case'pl-end':if(P.el>60)finishPlayer(false);else closePlayer();break;
   case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};{const tp=document.getElementById('rpe-tip');if(tp)tp.textContent=`RPE ${v}: ${RPED[v]}`}break}
