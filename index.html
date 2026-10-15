@@ -145,6 +145,7 @@ td.num,th.num{white-space:nowrap}
 .toast.err{background:var(--z5);color:#fff}
 .queue.chg .qi{animation:qflash 1.6s ease-out}
 @keyframes qflash{0%{background:color-mix(in srgb,var(--accent) 35%,var(--surface))}100%{background:var(--surface)}}
+.sync.err i{background:var(--z5)}
 /* abas */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -337,7 +338,7 @@ let S=defState();
 const ui={tab:'hoje',cond:'normal',T:40,shuf:0,libI:0,libCat:'',libCond:'',libT:40,histMan:null};
 try{const r=localStorage.getItem(LS);if(r)S=Object.assign(defState(),JSON.parse(r))}catch(e){}
 let dbRef=null,saveT=null,writing=false,again=false,synced=false;
-function save(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}clearTimeout(saveT);saveT=setTimeout(push,800)}
+function save(){S.mod=Date.now();try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}clearTimeout(saveT);saveT=setTimeout(push,800);ghQueue()}
 async function push(){if(!dbRef)return;if(writing){again=true;return}writing=true;
   try{await dbRef.set(JSON.parse(JSON.stringify(S)));synced=true}catch(e){synced=false}
   writing=false;setSync();if(again){again=false;push()}}
@@ -349,7 +350,28 @@ async function initDb(tries=0){
     if(snap.exists){S=Object.assign(defState(),JSON.parse(JSON.stringify(snap.data())));if(ensureWeek())push();try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}synced=true;render()}
     else{await dbRef.set(JSON.parse(JSON.stringify(S)));synced=true}
     setSync()}catch(e){}}
-function setSync(){const el=document.getElementById('sync');if(el){el.className='sync'+(synced?' on':'');el.innerHTML=`<i></i>${synced?'Salvo na sua conta':'Salvo neste aparelho'}`}}
+/* ---------- Sincronização (GitHub Gist) ---------- */
+const GHK='giro_livre_sync';let GH=null,ghT=null,ghBusy=false,ghAt=0,ghErr='';
+try{GH=JSON.parse(localStorage.getItem(GHK)||'null')}catch(e){}
+const ghOK=()=>!/claude/.test(location.hostname)&&location.protocol==='https:';
+async function ghApi(path,opt={}){const r=await fetch('https://api.github.com'+path,{...opt,cache:'no-store',headers:{'Authorization':'Bearer '+GH.tok,'Accept':'application/vnd.github+json',...(opt.body?{'Content-Type':'application/json'}:{})}});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+function mergeS(a,b){const del=[...new Set([...(a.del||[]),...(b.del||[])])].slice(-800),dl=new Set(del);
+  const hm=new Map();[...(a.hist||[]),...(b.hist||[])].forEach(x=>{if(!dl.has(x.id))hm.set(x.id,x)});
+  const cm=new Map();[...(a.custom||[]),...(b.custom||[])].forEach(x=>{if(dl.has(x.id))return;const o=cm.get(x.id);if(!o||(x.u||0)>(o.u||0))cm.set(x.id,x)});
+  const nw=(a.mod||0)>=(b.mod||0)?a:b,ol=nw===a?b:a;
+  return Object.assign(defState(),nw,{hist:[...hm.values()].sort((x,y)=>x.ts-y.ts).slice(-500),custom:[...cm.values()].sort((x,y)=>(y.u||0)-(x.u||0)),del,prog:Object.assign({},ol.prog,nw.prog),mod:Math.max(a.mod||0,b.mod||0)})}
+async function ghPull(){if(!GH||!GH.id||!ghOK())return;try{const g=await ghApi('/gists/'+GH.id);const f=g.files&&g.files['giro-livre.json'];
+    if(f&&f.content){const r=JSON.parse(f.content),m=mergeS(S,r),ch=JSON.stringify(m)!==JSON.stringify(S);S=m;ensureWeek();try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}if(ch&&!P)render();if(JSON.stringify(r)!==JSON.stringify(S))ghQueue(1)}
+    ghAt=Date.now();ghErr=''}catch(e){ghErr=String(e.message)}setSync()}
+function ghQueue(now){if(!GH||!GH.id||!ghOK())return;clearTimeout(ghT);ghT=setTimeout(ghPush,now?100:2500)}
+async function ghPush(){if(!GH||!GH.id||ghBusy)return;ghBusy=true;try{await ghApi('/gists/'+GH.id,{method:'PATCH',body:JSON.stringify({files:{'giro-livre.json':{content:JSON.stringify(S)}}})});ghAt=Date.now();ghErr=''}catch(e){ghErr=String(e.message)}ghBusy=false;setSync()}
+async function ghConnect(code){code=code.trim();let tok=code,id='';if(code.startsWith('GL1:')){const p=code.split(':');tok=p[1];id=p[2]||''}
+  GH={tok,id};try{if(!id){const gs=await ghApi('/gists?per_page=100');const f=gs.find(g=>g.description==='Giro Livre · dados');
+      if(f)id=f.id;else{const g=await ghApi('/gists',{method:'POST',body:JSON.stringify({description:'Giro Livre · dados',public:false,files:{'giro-livre.json':{content:JSON.stringify(S)}}})});id=g.id}}
+    GH.id=id;try{localStorage.setItem(GHK,JSON.stringify(GH))}catch(e){}await ghPull();await ghPush();return!ghErr}catch(e){ghErr=String(e.message);GH=null;try{localStorage.removeItem(GHK)}catch(x){}return false}}
+function syncTxt(){if(synced)return['on','Salvo na sua conta'];if(GH&&ghErr)return['err','Sincronização falhou'];if(GH&&ghAt){const d=new Date(ghAt);return['on','Sincronizado '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')]}if(GH)return['','Sincronizando…'];return['','Salvo neste aparelho']}
+function setSync(){const el=document.getElementById('sync');if(el){const[c,t]=syncTxt();el.className='sync'+(c?' '+c:'');el.innerHTML=`<i></i>${t}`}}
+
 
 /* ===================== Datas ===================== */
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -383,10 +405,14 @@ function genWeek(keepPerna){const f=FOCOS[S.settings.foco]||FOCOS.equilibrado;co
 function ensureWeek(){if(!S.plan||S.plan.week!==iso(monday())){genWeek(true);save();return true}return false}
 
 /* ===================== Treinos ===================== */
+const rMax=bl=>bl.reduce((a,x)=>x.z>=4?Math.max(a,...(String(x.r).match(/\d/g)||[0]).map(Number)):a,0);
+function progBl(id,bl){const g=S.prog&&S.prog[id];if(!g)return bl;const base=rMax(bl);if(!base||g===base)return bl;const d=g-base;
+  return bl.map(x=>x.z>=4?{...x,r:x.r.replace(/R(\d)/g,(m,n)=>'R'+clamp(+n+d,1,8))}:x)}
+function pageToast(t){const el=document.createElement('div');el.className='toast';el.innerHTML=`<div class="tt"><b>${esc(t)}</b></div>`;document.body.appendChild(el);setTimeout(()=>el.remove(),6500)}
 function getW(ref){if(!ref)return null;if(ref.src==='c'){const c=S.custom.find(x=>x.id===ref.id);if(!c)return null;
     return{nome:c.nome,cat:c.cat,i:c.i,foco:c.foco||'Treino criado por você',blocks:c.blocks,custom:1,perna:c.perna}}
   const t=TB[ref.id];if(!t)return null;const T=clamp(ref.min||S.settings.defMin,t.min,t.max);
-  return{nome:t.nome,cat:t.cat,i:t.i,foco:t.foco,blocks:buildT(t,T),min:T,t}}
+  return{nome:t.nome,cat:t.cat,i:t.i,foco:t.foco,blocks:progBl(t.id,buildT(t,T)),min:T,t,prog:S.prog&&S.prog[t.id]}}
 const kcal=bl=>Math.round(bl.reduce((a,x)=>a+(x.p===POS.FB?2.5:MET[x.z])*S.settings.peso*x.d/3600,0));
 const z45=bl=>Math.round(bl.reduce((a,x)=>a+(x.z>=4?x.d:0),0)/60);
 const mins=bl=>Math.round(sum(bl)/60);
@@ -400,7 +426,7 @@ function prof(bl,cls=''){const tot=sum(bl)||1,W=1000,H=44;let x=0,r='';for(const
   return`<svg class="prof ${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${r}</svg>`}
 const ipill=i=>`<span class="pill"><span class="dot" style="background:var(--z${INTZ[i]})"></span>${INT[i]}</span>`;
 const zp=z=>`<span class="zp" style="background:var(--z${z})">Z${z}</span>`;
-function metaLine(w){return`<div class="meta num"><span><b>${mins(w.blocks)}</b> min</span><span><b>${kcal(w.blocks)}</b> kcal</span><span><b>${z45(w.blocks)}</b> min Z4–Z5</span><span>${esc(w.cat)}</span></div>`}
+function metaLine(w){return`<div class="meta num"><span><b>${mins(w.blocks)}</b> min</span><span><b>${kcal(w.blocks)}</b> kcal</span><span><b>${z45(w.blocks)}</b> min Z4–Z5</span><span>${esc(w.cat)}</span>${w.prog?`<span>tiros <b>R${w.prog}</b></span>`:''}</div>`}
 const refKey=r=>JSON.stringify({src:r.src,id:r.id,min:r.min||0});
 const chips=(name,opts,cur)=>`<div class="chips" role="group">${opts.map(([v,l])=>`<button class="chip" data-a="${name}" data-v="${v}" aria-pressed="${cur===v}">${l}</button>`).join('')}</div>`;
 const CONDS=[['pronto','Descansado'],['normal','Normal'],['cansado','Cansado'],['perna','Pós-perna']];
@@ -411,7 +437,7 @@ const ICON={hoje:'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',semana
 const TABS=[['hoje','Hoje'],['semana','Semana'],['bib','Biblioteca'],['meus','Meus'],['hist','Histórico']];
 function renderTabs(){document.getElementById('tabs').innerHTML=TABS.map(([k,l])=>`<button class="tab" role="tab" data-a="tab" data-v="${k}" aria-selected="${ui.tab===k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${l}</button>`).join('')}
 
-function header(title,sub){return`<div class="top"><div><div class="eyebrow">${sub}</div><h1>${title}</h1></div><div id="sync" class="sync${synced?' on':''}"><i></i>${synced?'Salvo na sua conta':'Salvo neste aparelho'}</div></div>`}
+function header(title,sub){return`<div class="top"><div><div class="eyebrow">${sub}</div><h1>${title}</h1></div>${(([c,t])=>`<div id="sync" class="sync${c?' '+c:''}"><i></i>${t}</div>`)(syncTxt())}</div>`}
 function doneOn(date){return S.hist.filter(h=>h.date===date)}
 
 function render(){ensureWeek();renderTabs();const app=document.getElementById('app');
@@ -455,7 +481,7 @@ function vSemana(){const mon=monday(),ti=dow(new Date());const p=S.plan;let tot=
     <div class="row"><button class="btn pri wide" data-a="gen-week">Gerar nova semana</button></div>
     <div class="muted" style="font-size:13px">Dias de perna marcados ficam com treino leve de recuperação. O dia longo usa 1,4× o tempo padrão.</div></div></section>`;
   h+=`<section><h2>Ajustes</h2><div class="card"><div class="grid2"><div class="field"><label for="peso">Peso (kg) para kcal</label><input id="peso" type="number" min="40" max="200" value="${S.settings.peso}" data-in="peso"></div></div>
-    <div class="field"><label>Backup dos dados</label><div class="row"><button class="btn sm" data-a="bk-copy">Copiar backup</button><button class="btn sm" data-a="bk-restore">Restaurar backup</button></div><div class="muted" id="bk-msg" style="font-size:13px">Copia histórico, treinos seus e semana. Cole no Notes para guardar ou para levar a outro aparelho.</div></div></div></section>`;
+    <div class="field"><label>Backup dos dados</label><div class="row"><button class="btn sm" data-a="bk-copy">Copiar backup</button><button class="btn sm" data-a="bk-restore">Restaurar backup</button></div><div class="muted" id="bk-msg" style="font-size:13px">Copia histórico, treinos seus e semana. Cole no Notes para guardar ou para levar a outro aparelho.</div></div>${ghOK()?`<div class="field"><label>Sincronizar celular e PC</label>${GH?`<div class="row"><span class="pill"><span class="dot" style="background:var(--z2)"></span>Ligado</span><button class="btn sm" data-a="gh-code">Copiar código para o outro aparelho</button><button class="btn sm" data-a="gh-sync">Sincronizar agora</button><button class="btn sm danger" data-a="gh-off">Desligar</button></div>`:`<div class="row" style="flex-wrap:nowrap"><input id="gh-tok" type="text" placeholder="Cole o token ou o código GL1:…" autocomplete="off"><button class="btn sm pri" data-a="gh-on">Conectar</button></div><div class="muted" style="font-size:13px">No PC, crie um token em <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Giro%20Livre" target="_blank" rel="noopener">github.com/settings/tokens</a> marcando só <b>gist</b> e validade <b>No expiration</b>, e cole aqui. No celular, cole o código copiado do PC.</div>`}<div class="muted" id="gh-msg" style="font-size:13px"></div></div>`:''}</div></section>`;
   return h}
 function dayRef(i){return S.plan.days[i]}
 function sheetDay(i){const d=dayRef(i),w=getW(d),t=d.src==='t'?TB[d.id]:null;const mon=monday();
@@ -489,7 +515,7 @@ function calSec(){if(!ui.calM){const d=new Date();ui.calM=new Date(d.getFullYear
   <div class="cal-leg">${[1,2,3,4,5].map(z=>`<span><i style="background:var(--z${z})"></i>Z${z}</span>`).join('')}<span>cor = treino mais forte do dia</span></div></div>
   <div id="cal-det">${calDet()}</div></section>`}
 function calDet(){const ds=ui.calSel,d=fromIso(ds),hs=doneOn(ds);let h=`<div class="eyebrow" style="margin-bottom:6px">${DNL[dow(d)]}, ${ddmm(d)}</div>`;
-  if(hs.length)return h+'<div class="list">'+hs.map(x=>`<div class="card" style="gap:6px;border-left:5px solid var(--z${histZ(x)})"><h3>${esc(x.nome)}</h3><div class="meta num"><span><b>${x.min}</b> min</span><span><b>${x.kcal||0}</b> kcal</span><span><b>${x.z45||0}</b> min Z4–Z5</span><span>RPE <b>${x.rpe||'–'}</b></span></div>${x.nota?`<div style="font-size:14px">${esc(x.nota)}</div>`:''}</div>`).join('')+'</div>';
+  if(hs.length)return h+'<div class="list">'+hs.map(x=>`<div class="card" style="gap:6px;border-left:5px solid var(--z${histZ(x)})"><h3>${esc(x.nome)}</h3><div class="meta num"><span><b>${x.min}</b> min</span><span><b>${x.kcal||0}</b> kcal</span><span><b>${x.z45||0}</b> min Z4–Z5</span><span>RPE <b>${x.rpe||'–'}</b></span>${x.rUsed?`<span>tiros <b>R${x.rUsed}</b></span>`:''}</div>${x.nota?`<div style="font-size:14px">${esc(x.nota)}</div>`:''}</div>`).join('')+'</div>';
   const mon=iso(monday()),i=Math.round((fromIso(ds)-fromIso(mon))/864e5);
   if(i>=0&&i<7&&ds>=today()){const w=getW(S.plan.days[i]);return h+`<div class="empty">Programado: <b>${w?esc(w.nome):'sem treino'}</b>${w?` · ${mins(w.blocks)} min`:''}</div>`}
   return h+`<div class="empty">${ds>today()?'Dia ainda não chegou.':'Nenhum treino registrado neste dia.'}</div>`}
@@ -574,7 +600,7 @@ function vHist(){const mon=monday();const wk=S.hist.filter(x=>x.date>=iso(mon));
   h+=`<section><div class="eyebrow">Esta semana</div><div class="tiles"><div class="tile"><b class="num">${wk.length}</b><span>sessões</span></div><div class="tile"><b class="num">${wk.reduce((a,x)=>a+x.min,0)}</b><span>minutos</span></div><div class="tile"><b class="num">${wk.reduce((a,x)=>a+(x.kcal||0),0)}</b><span>kcal</span></div><div class="tile"><b class="num">${wk.reduce((a,x)=>a+(x.z45||0),0)}</b><span>min Z4–Z5</span></div></div></section>`;
   h+=`<section><div class="card"><div class="row between"><h3>Minutos por semana</h3><span class="muted" style="font-size:12px">últimas 8</span></div>${weekChart(weeks)}</div></section>`;
   h+=`<section><div class="row between"><h2>Sessões</h2><button class="btn sm" data-a="man">Registrar manual</button></div><div class="list">${S.hist.length?S.hist.slice().sort((a,c)=>c.ts-a.ts).slice(0,60).map(x=>`<div class="card" style="gap:6px"><div class="row between"><div style="min-width:0"><div class="eyebrow">${DNL[dow(fromIso(x.date))]} ${ddmm(fromIso(x.date))}</div><h3>${esc(x.nome)}</h3></div><button class="btn sm ghost danger" data-a="h-del" data-v="${x.id}">${ui.hdel===x.id?'Confirmar':'Apagar'}</button></div>
-    <div class="meta num"><span><b>${x.min}</b> min</span><span><b>${x.kcal||0}</b> kcal</span><span><b>${x.z45||0}</b> min Z4–Z5</span><span>RPE <b>${x.rpe||'–'}</b></span>${x.cond?`<span>${esc((CONDS.find(c=>c[0]===x.cond)||[])[1]||'')}</span>`:''}</div>${x.nota?`<div style="font-size:14px">${esc(x.nota)}</div>`:''}</div>`).join(''):`<div class="empty">Nenhuma sessão registrada. Ao terminar um treino no player, você dá a nota de esforço e ele aparece aqui.</div>`}</div></section>`;
+    <div class="meta num"><span><b>${x.min}</b> min</span><span><b>${x.kcal||0}</b> kcal</span><span><b>${x.z45||0}</b> min Z4–Z5</span><span>RPE <b>${x.rpe||'–'}</b></span>${x.rUsed?`<span>tiros <b>R${x.rUsed}</b></span>`:''}${x.cond?`<span>${esc((CONDS.find(c=>c[0]===x.cond)||[])[1]||'')}</span>`:''}</div>${x.nota?`<div style="font-size:14px">${esc(x.nota)}</div>`:''}</div>`).join(''):`<div class="empty">Nenhuma sessão registrada. Ao terminar um treino no player, você dá a nota de esforço e ele aparece aqui.</div>`}</div></section>`;
   return h}
 function weekChart(ws){const W=640,H=170,pl=34,pb=24,pt=12;const mx=Math.max(60,...ws.map(w=>w.v));const top=Math.ceil(mx/60)*60;const bw=(W-pl)/ws.length;
   let g='';for(let k=0;k<=3;k++){const v=top*k/3,y=H-pb-(H-pb-pt)*k/3;g+=`<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl-6}" y="${y+4}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(v)}</text>`}
@@ -677,10 +703,11 @@ function tick(){if(!P||!P.run)return;const now=performance.now();let dt=(now-P.l
 function plJump(d){if(!P)return;const n=clamp(P.idx+d,0,P.bl.length-1);if(d<0&&P.left<P.bl[P.idx].d-3){P.left=P.bl[P.idx].d}else{P.idx=n;P.left=P.bl[n].d}drawPlayer()}
 function finishPlayer(complete){if(!P)return;P.run=false;clearInterval(timer);lock(false);P.fin=true;
   const m=Math.max(1,Math.round(P.el/60));const fr=P.el/sum(P.bl);const kc=Math.round(kcal(P.bl)*Math.min(1,fr));
-  P.res={min:m,kcal:kc,z45:Math.round(P.z/60)};const el=document.getElementById('player');
+  P.res={min:m,kcal:kc,z45:Math.round(P.z/60)};P.rPlan=rMax(P.bl);P.rUsed=P.rPlan;const el=document.getElementById('player');
   el.innerHTML=`<div class="pl-top"><div><div class="eyebrow">${complete?'Treino concluído':'Encerrado antes do fim'}</div><h1>${esc(P.w.nome)}</h1></div></div>
    <div class="tiles"><div class="tile"><b class="num">${m}</b><span>minutos</span></div><div class="tile"><b class="num">${kc}</b><span>kcal</span></div><div class="tile"><b class="num">${P.res.z45}</b><span>min Z4–Z5</span></div><div class="tile"><b class="num">${Math.round(Math.min(1,fr)*100)}%</b><span>do treino</span></div></div>
    <div class="field"><label>Esforço percebido (RPE)</label><div class="rpe" id="fin-rpe">${[1,2,3,4,5,6,7,8,9,10].map(v=>`<button class="chip" data-a="rpe" data-v="${v}" aria-pressed="false">${v}</button>`).join('')}</div><div class="rpe-tip" id="rpe-tip">Toque na nota para ver o que ela significa.</div></div>
+   ${P.rPlan?`<div class="field"><label>Resistência que você usou nos tiros</label><div class="rpe" id="fin-r">${[3,4,5,6,7,8].map(v=>`<button class="chip" data-a="rused" data-v="${v}" aria-pressed="${v===P.rPlan}">R${v}</button>`).join('')}</div><div class="rpe-tip" id="r-tip">Planejado: R${P.rPlan}. Toque se usou outra.</div></div>`:''}
    <div class="field"><label for="fin-nota">Como foi</label><textarea id="fin-nota" placeholder="Energia, pernas, FC, ajuste de resistência"></textarea></div>
    <div class="row" style="margin-top:auto"><button class="btn pri wide" data-a="fin-save">Salvar no histórico</button><button class="btn" data-a="fin-discard">${ui.disc?'Toque de novo':'Descartar'}</button></div>`}
 function closePlayer(){clearInterval(timer);lock(false);P=null;ui.disc=0;const el=document.getElementById('player');el&&el.remove();document.body.style.overflow=''}
@@ -724,9 +751,9 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
     for(let k=1;k<=n;k++){E.blocks.push(b(on,z,g('iv-rpm'),g('iv-r'),'SP',`Tiro ${k}/${n}`));if(off>=5)E.blocks.push(b(off,1,'85','R2','SP','Recupera'))}renderEditor();break}
   case'ed-save':{const m=document.getElementById('ed-msg');if(!E.nome||!E.nome.trim()){m.textContent='Dê um nome ao treino para salvar.';document.getElementById('ed-nome').focus();break}
     if(!E.blocks.length){m.textContent='Adicione ao menos um bloco.';break}
-    const o={id:E.id||'c'+Date.now().toString(36),nome:E.nome.trim(),cat:E.cat,i:+E.i,perna:!!E.perna,foco:E.foco||'Treino criado por você',blocks:E.blocks.filter(x=>x.d>0)};
+    const o={id:E.id||'c'+Date.now().toString(36),nome:E.nome.trim(),cat:E.cat,i:+E.i,perna:!!E.perna,foco:E.foco||'Treino criado por você',blocks:E.blocks.filter(x=>x.d>0),u:Date.now()};
     const ix=S.custom.findIndex(c=>c.id===o.id);if(ix>=0)S.custom[ix]=o;else S.custom.unshift(o);save();closeSheet();ui.tab='meus';render();break}
-  case'ed-del':if(!E.del){E.del=1;renderEditor();break}S.custom=S.custom.filter(c=>c.id!==E.id);S.plan.days.forEach((d,i)=>{if(d.src==='c'&&d.id===E.id)S.plan.days[i]=pickDay(d.slot||'base',d.perna,new Set())});save();closeSheet();render();break;
+  case'ed-del':if(!E.del){E.del=1;renderEditor();break}S.del=[...(S.del||[]),E.id];S.custom=S.custom.filter(c=>c.id!==E.id);S.plan.days.forEach((d,i)=>{if(d.src==='c'&&d.id===E.id)S.plan.days[i]=pickDay(d.slot||'base',d.perna,new Set())});save();closeSheet();render();break;
   case'pl-play':plToggle();break;
   case'pl-prev':plJump(-1);break;
   case'pl-next':plJump(1);break;
@@ -736,11 +763,19 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'ask':{const a=document.getElementById('pl-ask');a.hidden=!a.hidden;if(!a.hidden)document.getElementById('adj-txt').focus();break}
   case'adj-go':adjDo(document.getElementById('adj-txt').value);break;
   case'undo':adjUndo();break;
+  case'gh-on':{const m=document.getElementById('gh-msg'),tk=document.getElementById('gh-tok').value;if(!tk.trim()){m.textContent='Cole o token primeiro.';break}m.textContent='Conectando…';
+    ghConnect(tk).then(ok=>{if(ok)render();else{const mm=document.getElementById('gh-msg');if(mm)mm.textContent='Não consegui conectar ('+ghErr+'). Confira se o token tem a permissão gist.'}});break}
+  case'gh-code':{const c='GL1:'+GH.tok+':'+GH.id,m=document.getElementById('gh-msg'),sh=()=>{m.textContent=c};
+    try{navigator.clipboard.writeText(c).then(()=>{m.textContent='Código copiado. No outro aparelho, cole em Semana › Ajustes › Sincronizar. Ele dá acesso aos seus dados de treino: não compartilhe.'},sh)}catch(e){sh()}break}
+  case'gh-sync':{const m=document.getElementById('gh-msg');m.textContent='Sincronizando…';ghPull().then(()=>ghPush()).then(()=>{render()});break}
+  case'gh-off':GH=null;try{localStorage.removeItem(GHK)}catch(e){}render();break;
+  case'rused':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));P.rUsed=+v;document.getElementById('r-tip').textContent=+v===P.rPlan?'Igual ao planejado.':`Planejado R${P.rPlan}, você fez R${v}.`;break}
   case'pl-voz':voz=!voz;try{localStorage.setItem('gl_voz',voz?'1':'0')}catch(e){}t.textContent=voz?'Voz: on':'Voz: off';if(!voz)try{speechSynthesis.cancel()}catch(e){}break;
   case'pl-end':if(P.el>60)finishPlayer(false);else closePlayer();break;
   case'rpe':{t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));if(P)P.rpe=+v;ui.histMan={rpe:+v};{const tp=document.getElementById('rpe-tip');if(tp)tp.textContent=`RPE ${v}: ${RPED[v]}`}break}
-  case'fin-save':{const n=document.getElementById('fin-nota').value.trim();S.hist.push({id:'h'+Date.now().toString(36),ts:Date.now(),date:today(),nome:P.w.nome,cat:P.w.cat,min:P.res.min,kcal:P.res.kcal,z45:P.res.z45,rpe:P.rpe||null,nota:n,cond:P.cond});
-    if(S.hist.length>500)S.hist=S.hist.slice(-500);save();closePlayer();render();break}
+  case'fin-save':{const n=document.getElementById('fin-nota').value.trim();S.hist.push({id:'h'+Date.now().toString(36),ts:Date.now(),date:today(),nome:P.w.nome,cat:P.w.cat,min:P.res.min,kcal:P.res.kcal,z45:P.res.z45,rpe:P.rpe||null,nota:n,cond:P.cond,tid:P.ref&&P.ref.src==='t'?P.ref.id:null,rPlan:P.rPlan||null,rUsed:P.rUsed||null});let pm='';
+    if(P.ref&&P.ref.src==='t'&&P.rUsed&&P.rpe&&P.el>=sum(P.bl)*.8){const nt=clamp(P.rpe<=7?P.rUsed+1:P.rpe>=10?P.rUsed-1:P.rUsed,1,8);S.prog=Object.assign({},S.prog,{[P.ref.id]:nt});pm=`Próximo ${P.w.nome}: tiros em R${nt}${nt>P.rUsed?' (sobe 1 nível)':nt<P.rUsed?' (desce 1 nível)':' (mantém)'}`}
+    if(S.hist.length>500)S.hist=S.hist.slice(-500);save();closePlayer();render();if(pm)pageToast(pm);break}
   case'fin-discard':if(!ui.disc){ui.disc=1;t.textContent='Toque de novo';break}closePlayer();render();break;
   case'man':ui.histMan={rpe:6};sheetManual();break;
   case'bk-copy':{const txt=JSON.stringify(S);const m=document.getElementById('bk-msg');
@@ -750,7 +785,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
   case'bk-apply':{try{const o=JSON.parse(document.getElementById('bk-in').value);if(!o||!Array.isArray(o.hist)||!Array.isArray(o.custom))throw 0;S=Object.assign(defState(),o);ensureWeek();save();closeSheet();render()}catch(e){document.getElementById('bk-err').textContent='Texto inválido. Copie o backup inteiro, do primeiro { ao último }.'}break}
   case'man-save':{const g=id=>document.getElementById(id).value;const mn=clamp(+g('mn-min')||0,1,300),rp=ui.histMan.rpe||6;const met=rp<=3?4.5:rp<=5?7:rp<=7?8.5:rp<=8?10.5:13;
     S.hist.push({id:'h'+Date.now().toString(36),ts:fromIso(g('mn-date')||today()).getTime(),date:g('mn-date')||today(),nome:g('mn-nome')||'Pedal livre',cat:'Livre',min:mn,kcal:Math.round(met*S.settings.peso*mn/60),z45:0,rpe:rp,nota:g('mn-nota').trim()});save();closeSheet();render();break}
-  case'h-del':if(ui.hdel!==v){ui.hdel=v;render();break}S.hist=S.hist.filter(x=>x.id!==v);ui.hdel=null;save();render();break;
+  case'h-del':if(ui.hdel!==v){ui.hdel=v;render();break}S.del=[...(S.del||[]),v];S.hist=S.hist.filter(x=>x.id!==v);ui.hdel=null;save();render();break;
   }});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='adj-txt'){e.preventDefault();adjDo(e.target.value);return}
   if(P&&!P.fin&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)){if(e.code==='Space'){e.preventDefault();plToggle();return}if(e.key==='ArrowRight'){e.preventDefault();plJump(1);return}if(e.key==='ArrowLeft'){e.preventDefault();plJump(-1);return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();adjUndo();return}if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&QA[+e.key-1]){adjDo(QA[+e.key-1][1]);return}}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.tap')){e.preventDefault();e.target.click()}if(e.key==='Escape'&&!P)closeSheet()});
@@ -770,7 +805,8 @@ document.addEventListener('change',e=>{const t=e.target;
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&P&&P.run)lock(true)});
 
 ui.T=S.settings.defMin;ui.libT=S.settings.defMin;
-render();initDb();
+render();initDb();ghPull();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!P)ghPull()});
 </script>
 
 </body>
