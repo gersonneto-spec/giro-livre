@@ -257,73 +257,93 @@ const b=(d,z,rpm,r,p,c)=>({d:Math.round(d),z,rpm,r,p:POS[p]||p,c});
 const sum=bl=>bl.reduce((a,x)=>a+x.d,0);
 const clamp=(v,a,c)=>Math.max(a,Math.min(c,v));
 const r5=v=>Math.round(v/5)*5;
+const q15=s=>Math.max(15,Math.round(s/15)*15);
+const W=x=>(x.w=1,x);const fx=x=>(x.fx=1,x);
 const warm=()=>[b(3*M,1,'85–90','R2','SP','Solta as pernas, respiração nasal'),b(4*M,2,'88–92','R3','SP','Sobe o ritmo, ombros soltos'),
-  ...[1,2,3].flatMap(i=>[b(30,3,'100–105','R5','SP',`Abertura ${i}/3, gira rápido`),b(30,1,'85','R2','SP','Solta')])];
-const warmS=()=>[b(3*M,1,'85–90','R2','SP','Entra fácil, acorda a perna'),b(2*M,2,'90','R3','SP','Encontra o ritmo')];
+  ...[1,2,3].flatMap(i=>[b(30,3,'100–105','R5','SP',`Abertura ${i}/3, gira rápido`),b(30,1,'85','R2','SP','Solta')])].map(W);
+const warmS=()=>[b(3*M,1,'85–90','R2','SP','Entra fácil, acorda a perna'),b(2*M,2,'90','R3','SP','Encontra o ritmo')].map(W);
 const cool=(m=2)=>[b(m*M,1,'80–90','R2','SP','Volta à calma, respiração longa')];
-function rot(avail,segs,seg){const o=[];let i=0;while(avail>=60){const d=Math.min(seg,avail);o.push(b(d,...segs[i%segs.length]));avail-=d;i++}return o}
+/* rot: divide o tempo disponível em n trechos iguais (arredondados a 15 s), alternando o terreno */
+function rot(avail,segs,seg){avail=Math.round(avail);if(avail<60)return[];const n=Math.max(1,Math.round(avail/seg));const d=q15(avail/n);const o=[];for(let i=0;i<n;i++)o.push(b(i<n-1?d:avail-d*(n-1),...segs[i%segs.length]));return o}
 function reps(n,f){const o=[];for(let k=1;k<=n;k++)o.push(...f(k,n));return o}
-function fit(bl,T){const diff=T*60-sum(bl);if(diff<=0)return bl;const last=bl[bl.length-1];
-  if(diff>=60&&last&&/^Volta à calma/.test(last.c)){const pv=bl[bl.length-2]||last;bl.splice(bl.length-1,0,Math.min(pv.z,2)===1?b(diff,1,'85–90','R2','SP','Giro leve, completa o tempo'):b(diff,2,'90','R3','SP','Ritmo constante, completa o tempo'))}
-  else{for(let i=bl.length-1;i>=0;i--){if(bl[i].p!==POS.FB){bl[i].d+=diff;break}}}return bl}
+/* sc: repete a unidade f quantas vezes couber no tempo e estica/encurta só os blocos flexíveis (os marcados com fx ficam fixos) */
+function sc(avail,f,o={}){const mn=o.min||1,mx=o.max||99,smax=o.smax||1.6,smin=o.smin||.6;
+  const u=f(1,1),U=sum(u),X=sum(u.filter(x=>x.fx)),F=U-X;let n=clamp(Math.round(avail/U),mn,mx);while(n>mn&&n*(X+F*smin)>avail)n--;
+  const s=F?clamp((avail-n*X)/(n*F),smin,smax):1;
+  const out=reps(n,(k,n)=>f(k,n).map(x=>{if(!x.fx)x.d=q15(x.d*s);return x}));
+  const fl=out.filter(x=>!x.fx);let d=Math.round(avail-sum(out));
+  if(fl.length&&s<smax&&s>smin){let i=0,g=0;while(Math.abs(d)>=15&&g<5000){const x=fl[i%fl.length],st=d>0?15:-15;if(x.d+st>=30){x.d+=st;d-=st}i++;g++}fl[fl.length-1].d+=d}
+  return out}
+const Z2PRE=[[2,'88–92','R4','SP','Base Z2 antes da parte principal, ritmo de estrada'],[2,'95–100','R3','SP','Base Z2, giro um pouco mais alto, mesmo esforço']];
+const Z2POS=[[2,'88–92','R3','SP','Z2 de saída, giro constante antes de soltar'],[2,'92–96','R3','SP','Z2 de saída, mantém o giro redondo']];
+function fit(bl,T){const diff=Math.round(T*60-sum(bl));bl.forEach(x=>delete x.fx);if(diff<=0)return bl;
+  const li=bl.length-1,last=bl[li],isC=last&&/^Volta à calma/.test(last.c);
+  if(!isC||diff<60){for(let i=li;i>=0;i--){if(bl[i].p!==POS.FB){bl[i].d+=diff;break}}return bl}
+  if(diff<=180){last.d+=diff;return bl}
+  let wi=-1;bl.forEach((x,i)=>{if(x.w)wi=i});
+  let pre=wi>=0?q15(diff*.6):0,post=diff-pre;if(wi>=0&&post<120){pre=diff;post=0}
+  if(post)bl.splice(li,0,...rot(post,Z2POS,6*M));
+  if(pre)bl.splice(wi+1,0,...rot(pre,Z2PRE,6*M));
+  return bl}
 
 /* ===================== Biblioteca de modelos ===================== */
 const TPL=[
 {id:'regen',nome:'Giro Regenerativo',cat:'Recuperação',i:1,perna:1,foco:'Soltar a perna e acelerar a recuperação',min:20,max:60,
- build:T=>[...rot((T-5)*M,[[1,'85–90','R2','SP','Pedalada leve, sem olhar métrica'],[1,'95–100','R2','SP','Sobe o giro, carga zero'],[1,'85','R3','SP','Leve, respira pelo nariz']],5*M),...cool()]},
+ build:T=>[...rot((T-2)*M,[[1,'85–90','R2','SP','Pedalada leve, sem olhar métrica'],[1,'95–100','R2','SP','Sobe o giro, carga zero'],[1,'85','R3','SP','Leve, respira pelo nariz']],5*M),...cool()]},
 {id:'ativa',nome:'Ativa + Mobilidade',cat:'Recuperação',i:1,perna:1,foco:'Recuperação com amplitude de quadril e tornozelo',min:25,max:45,
  build:T=>[...rot((T-10)*M,[[1,'85–90','R2','SP','Pedalada leve, sem olhar métrica'],[1,'90–95','R3','SP','Aumenta o giro mantendo leve']],Math.ceil((T-10)/2)*M),
   b(5*M,1,'—','—','FB','Mobilidade de quadril: 90/90 e agachamento profundo'),b(5*M,1,'—','—','FB','Tornozelo na parede, rotação torácica e peitoral no batente')]},
 {id:'flush',nome:'Flush Pós-Perna',cat:'Recuperação',i:1,perna:1,foco:'Dia de perna na academia: circula sangue sem carga',min:20,max:40,
- build:T=>[...warmS(),...rot((T-10)*M,[[1,'95–100','R2','SP','Giro solto, zero carga, tira o peso da perna'],[1,'85','R2','SP','Cadência confortável, ombros soltos']],3*M),...cool()]},
-{id:'base',nome:'Base Aeróbica Z2',cat:'Base',i:2,perna:0,foco:'Volume aeróbico e uso de gordura',min:30,max:120,
- build:T=>[...warmS(),...rot((T-10)*M,[[2,'90–95','R4','SP','Ritmo de estrada, respiração controlada'],[2,'68–75','R6','SS','Subida longa, empurra com o calcanhar'],[2,'98–105','R3','SP','Giro rápido e limpo, quadril parado']],7*M),...cool()]},
+ build:T=>[...warmS(),...rot((T-7)*M,[[1,'95–100','R2','SP','Giro solto, zero carga, tira o peso da perna'],[1,'85','R2','SP','Cadência confortável, ombros soltos'],[1,'100–105','R2','SP','Giro alto e leve, perna “lavando”']],3*M),...cool()]},
+{id:'base',nome:'Base Aeróbica Z2',cat:'Base',i:2,perna:0,foco:'Volume aeróbico com terreno variado: estrada, subida e giro',min:30,max:120,
+ build:T=>[...warmS(),...rot((T-7)*M,[[2,'90–95','R4','SP','Estrada: ritmo constante, respiração controlada'],[2,'68–75','R6','SS','Subida longa sentado, empurra com o calcanhar'],[2,'98–105','R3','SP','Giro rápido e limpo, quadril parado'],[2,'85–90','R5','SP','Vento contra: carga média, tronco firme']],6*M),...cool()]},
 {id:'basecad',nome:'Base Cadência',cat:'Base',i:2,perna:0,foco:'Eficiência de pedalada: giro alto e torque baixo',min:30,max:90,
- build:T=>[...warmS(),...rot((T-10)*M,[[2,'100–108','R3','SP','Giro alto, quadril parado no selim'],[2,'60–68','R6','SS','Torque baixo, empurra devagar e forte'],[3,'88–94','R5','SP','Tempo, ritmo firme e respiração controlada']],6*M),...cool()]},
+ build:T=>[...warmS(),...rot((T-7)*M,[[2,'100–108','R3','SP','Giro alto, quadril parado no selim'],[2,'60–68','R6','SS','Torque baixo, empurra devagar e forte'],[2,'90–95','R4','SP','Cadência natural, recupera o padrão'],[3,'88–94','R5','SP','Tempo, ritmo firme e respiração controlada']],5*M),...cool()]},
 {id:'estrada',nome:'Estrada Rolando',cat:'Base',i:2,perna:0,foco:'Z2 longo com surtos curtos para não engessar',min:30,max:120,
- build:T=>[...warmS(),...reps(Math.max(1,Math.floor((T-10)/10)),(k,n)=>[b(9*M,2,'88–92','R4','SP',`Bloco ${k}/${n}, ritmo constante de estrada`),b(M,3,'95–100','R5','SP','Surto de 1 min sentado, segura o giro')]),...cool()]},
+ build:T=>[...warmS(),...sc((T-7)*M,(k,n)=>[b(9*M,2,'88–92','R4','SP',`Bloco ${k}/${n}, ritmo constante de estrada`),fx(k%2?b(M,3,'95–100','R5','SP','Surto de 1 min sentado, segura o giro'):b(M,3,'75–80','R6','EP','Surto de 1 min em pé, sobe a carga'))],{smin:.5,smax:2}),...cool()]},
 {id:'fatmax',nome:'Fat Max Contínuo',cat:'Base',i:2,perna:1,foco:'Z2 baixo e estável, máximo de gordura como combustível',min:40,max:120,
- build:T=>[...warmS(),...rot((T-10)*M,[[2,'85–90','R3','SP','Conversa em frases inteiras, respira pelo nariz'],[2,'88–92','R4','SP','Checa postura: ombros longe da orelha'],[2,'85–90','R3','SP','Hidrata e mantém o mesmo esforço']],15*M),...cool()]},
+ build:T=>[...warmS(),...rot((T-7)*M,[[2,'85–90','R3','SP','Conversa em frases inteiras, respira pelo nariz'],[2,'88–92','R4','SP','Checa postura: ombros longe da orelha'],[2,'85–90','R3','SP','Hidrata e mantém o mesmo esforço'],[2,'80–85','R4','SS','Sentado firme, cadência mais baixa, mesmo esforço']],10*M),...cool()]},
 {id:'drills',nome:'Drills de Técnica',cat:'Base',i:2,perna:1,foco:'Pedalada redonda e giro alto sem quicar',min:30,max:60,
- build:T=>[...warm(),...reps(Math.max(2,Math.floor((T-15)/5)),(k,n)=>[b(4*M,2,'90','R3','SP','Pedalada redonda, puxa na subida do pedal'),b(30,3,'110–120','R3','SP',`Spin-up ${k}/${n}: sobe o giro sem quicar`),b(30,1,'85','R2','SP','Solta')]),...cool()]},
+ build:T=>{const D=[['110–120','Spin-up: sobe o giro sem quicar no selim'],['100–110','Pedalada redonda: raspa a lama na sola no fundo do pedal'],['115–125','Giro máximo sentado, quadril parado'],['70–75','Puxada: puxa o pedal na subida, carga R5']];
+  return[...warm(),...sc((T-12)*M,(k,n)=>{const[rp,c]=D[(k-1)%D.length];return[b(4*M,2,'90','R3','SP','Z2 entre drills, pedalada solta e redonda'),fx(b(30,3,rp,rp==='70–75'?'R5':'R3','SP',`Drill ${k}/${n} · ${c}`)),fx(b(30,1,'85','R2','SP','Solta'))]},{min:2,smin:.5,smax:2}),...cool()]}},
 {id:'pircad',nome:'Pirâmide de Cadência',cat:'Base',i:2,perna:0,foco:'Controle de giro em várias rotações com carga fixa',min:30,max:70,
- build:T=>[...warmS(),...reps(Math.max(1,Math.floor((T-10)/12)),()=>[[80,2],[90,2],[100,3],[110,3],[100,3],[90,2]].map(([rp,z])=>b(2*M,z,String(rp),'R4','SP',`Trava em ${rp} rpm, carga R4 fixa`))),...cool()]},
+ build:T=>[...warmS(),...sc((T-7)*M,(k,n)=>[[80,2],[90,2],[100,3],[110,3],[100,3],[90,2]].map(([rp,z],j)=>b(2*M,z,String(rp),'R4','SP',`Pirâmide ${k}/${n} · trava em ${rp} rpm, carga R4 fixa`)),{smin:.5,smax:2}),...cool()]},
 {id:'tempo',nome:'Tempo Contínuo',cat:'Tempo',i:3,perna:0,foco:'Resistência em ritmo firme, abaixo do limiar',min:45,max:80,
- build:T=>{const L=T>=60?15:10;const n=Math.max(2,Math.floor((T-15)/(L+3)));return[...warm(),...reps(n,(k,n)=>[b(L*M,3,'85–92','R5','SP',`Tempo ${k}/${n}, ritmo firme e constante`),b(3*M,2,'90','R3','SP','Solta as pernas')]),...cool()]}},
+ build:T=>{const L=T>=60?15:10;return[...warm(),...sc((T-12)*M,(k,n)=>[b(L*M,3,'85–92','R5','SP',`Tempo ${k}/${n}, ritmo firme e constante`),fx(b(3*M,2,'90','R3','SP','Solta as pernas'))],{min:2,max:4}),...cool()]}},
 {id:'sweet',nome:'Escalada Sweet Spot',cat:'Limiar',i:3,perna:0,foco:'Limiar e força específica sentado',min:40,max:75,
- build:T=>{const L=clamp(Math.round((T-15)/3-3),6,12);const n=clamp(Math.floor((T-15)/(L+3)),2,4);return[...warm(),...reps(n,(k,n)=>[b(L*M,4,'65–75','R7','SS',`Escalada ${k}/${n}, pressão constante`),b(3*M,2,'90','R3','SP','Solta as pernas')]),...cool()]}},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[b(10*M,4,'65–75','R7','SS',`Escalada ${k}/${n}, pressão constante`),fx(b(3*M,2,'90','R3','SP','Solta as pernas'))],{min:2,max:4,smin:.6,smax:1.4}),...cool()]},
 {id:'overunder',nome:'Over-Under',cat:'Limiar',i:3,perna:0,foco:'Tolerar picos acima do limiar e limpar lactato no ritmo',min:35,max:65,
- build:T=>{const n=clamp(Math.floor((T-15)/16),1,3);return[...warm(),...reps(n,(k,n)=>[...[1,2,3].flatMap(j=>[b(3*M,4,'85–90','R6','SP',`Bloco ${k}/${n} · under ${j}/3, logo abaixo do limite`),b(M,5,'85–90','R7','SP',`Over ${j}/3, passa do limite e segura`)]),b(4*M,2,'90','R3','SP','Recupera girando')]),...cool()]}},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[...[1,2,3].flatMap(j=>[b(3*M,4,'85–90','R6','SP',`Bloco ${k}/${n} · under ${j}/3, logo abaixo do limite`),fx(b(M,5,'85–90','R7','SP',`Over ${j}/3, passa do limite e segura`))]),fx(b(4*M,2,'90','R3','SP','Recupera girando'))],{max:3,smax:1.5}),...cool()]},
 {id:'subida',nome:'Subida Progressiva',cat:'Força',i:3,perna:0,foco:'Carga crescente a cada 3 min, termina em pé',min:30,max:65,
- build:T=>[...warmS(),...reps(Math.max(1,Math.floor((T-10)/15)),(k,n)=>[b(3*M,2,'85','R4','SP',`Subida ${k}/${n}, começa sentado`),b(3*M,3,'80','R5','SP','Aumenta a carga, mesmo giro'),b(3*M,4,'75','R6','SS','Subida forte, empurra com o calcanhar'),b(3*M,4,'65–70','R7','EP','Topo da subida em pé'),b(3*M,1,'95','R2','SP','Descida, gira leve')]),...cool()]},
+ build:T=>[...warmS(),...sc((T-7)*M,(k,n)=>[b(3*M,2,'85','R4','SP',`Subida ${k}/${n}, começa sentado`),b(3*M,3,'80','R5','SP','Aumenta a carga, mesmo giro'),b(3*M,4,'75','R6','SS','Subida forte, empurra com o calcanhar'),b(3*M,4,'65–70','R7','EP','Topo da subida em pé'),b(3*M,1,'95','R2','SP','Descida, gira leve')],{smin:.7,smax:1.5}),...cool()]},
 {id:'limiar',nome:'Limiar 2×N',cat:'Limiar',i:3,perna:0,foco:'Elevar o limiar com dois blocos longos',min:40,max:60,
- build:T=>{const N=clamp(Math.floor((T-19)/2),10,20);return[...warm(),b(N*M,4,'75–85','R6–R7','SS','Limiar 1/2, ritmo de prova'),b(4*M,1,'85–90','R2','SP','Recupera bem'),b(N*M,4,'75–85','R6–R7','SS','Limiar 2/2, ritmo de prova'),...cool()]}},
+ build:T=>{const N=q15(clamp((T-16)/2,10,20)*M);return[...warm(),b(N,4,'75–85','R6–R7','SS','Limiar 1/2, ritmo de prova'),b(4*M,1,'85–90','R2','SP','Recupera bem'),b(N,4,'75–85','R6–R7','SS','Limiar 2/2, ritmo de prova'),...cool()]}},
 {id:'escada',nome:'Escada de Resistência',cat:'Tempo',i:3,perna:0,foco:'Sobe e desce a manopla de R3 a R7',min:30,max:65,
- build:T=>[...warmS(),...reps(Math.max(1,Math.floor((T-10)/18)),()=>[[2,'90','R3','SP','Degrau R3'],[2,'88','R4','SP','Degrau R4'],[3,'85','R5','SP','Degrau R5'],[4,'80','R6','SS','Degrau R6, sentado subida'],[4,'70–75','R7','EP','Topo R7 em pé'],[4,'80','R6','SS','Desce para R6'],[3,'85','R5','SP','Desce para R5'],[2,'88','R4','SP','Desce para R4'],[2,'90','R3','SP','R3, recupera']].map(s=>b(2*M,...s))),...cool()]},
+ build:T=>[...warmS(),...sc((T-7)*M,(k,n)=>[[2,'90','R3','SP','Degrau R3'],[2,'88','R4','SP','Degrau R4'],[3,'85','R5','SP','Degrau R5'],[4,'80','R6','SS','Degrau R6, sentado subida'],[4,'70–75','R7','EP','Topo R7 em pé'],[4,'80','R6','SS','Desce para R6'],[3,'85','R5','SP','Desce para R5'],[2,'88','R4','SP','Desce para R4'],[2,'90','R3','SP','R3, recupera']].map(([z,rp,r,p,c])=>b(2*M,z,rp,r,p,n>1?`Escada ${k}/${n} · ${c}`:c)),{smin:.6,smax:1.8}),...cool()]},
 {id:'forca',nome:'Força em Pé',cat:'Força',i:3,perna:0,foco:'Torque baixo em pé, glúteo e posterior trabalhando',min:35,max:55,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/4),4,8),(k,n)=>[b(2*M,4,'55–65','R7','EP',`Torque ${k}/${n} em pé, tronco firme, sem balançar`),b(2*M,2,'90','R3','SP','Senta e gira solto')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[fx(b(2*M,4,'55–65','R7','EP',`Torque ${k}/${n} em pé, tronco firme, sem balançar`)),b(2*M,2,'90','R3','SP','Senta e gira solto')],{min:4,max:8,smax:1.75}),...cool()]},
 {id:'montanha',nome:'Etapa de Montanha',cat:'Misto',i:3,perna:0,foco:'Simula percurso: plano, serra, rampa, descida e vento',min:40,max:90,
- build:T=>[...warmS(),...reps(Math.max(1,Math.floor((T-10)/17)),(k,n)=>[b(5*M,2,'90','R4','SP',`Volta ${k}/${n} · plano, ritmo constante`),b(4*M,3,'75–80','R6','SS','Começa a serra, sentado'),b(2*M,4,'65–70','R7','EP','Rampa forte em pé'),b(3*M,1,'95–100','R2','SP','Descida, gira leve'),b(3*M,3,'100','R5','SP','Retão com vento contra')]),...cool()]},
+ build:T=>[...warmS(),...sc((T-7)*M,(k,n)=>[b(5*M,2,'90','R4','SP',`Volta ${k}/${n} · plano, ritmo constante`),b(4*M,3,'75–80','R6','SS','Começa a serra, sentado'),b(2*M,4,'65–70','R7','EP','Rampa forte em pé'),b(3*M,1,'95–100','R2','SP','Descida, gira leve'),b(3*M,3,'100','R5','SP','Retão com vento contra')],{smin:.7,smax:1.5}),...cool()]},
 {id:'polar',nome:'Polarizado 80/20',cat:'Misto',i:3,perna:0,foco:'Base longa com 4 tiros de 1 min no fim',min:45,max:90,
- build:T=>[...warmS(),...rot((T-18)*M,[[2,'88–92','R4','SP','Z2 firme, respiração controlada'],[2,'95–100','R3','SP','Giro mais alto, mesmo esforço']],10*M),...reps(4,(k,n)=>[b(M,5,'100–105','R6','SP',`Tiro ${k}/${n}, forte de verdade`),b(M,1,'85','R2','SP','Solta')]),...cool()]},
+ build:T=>[...warmS(),...rot((T-15)*M,[[2,'88–92','R4','SP','Z2 firme, respiração controlada'],[2,'95–100','R3','SP','Giro mais alto, mesmo esforço'],[2,'75–80','R5','SS','Z2 sentado com mais carga, cadência baixa']],8*M),...reps(4,(k,n)=>[b(M,5,'100–105','R6','SP',`Tiro ${k}/${n}, forte de verdade`),b(M,1,'85','R2','SP','Solta')]),...cool()]},
 {id:'vo2',nome:'VO₂ Norueguês 4×4',cat:'VO₂',i:4,perna:0,foco:'Potência aeróbica com carga alta, alterna sentado e em pé',min:40,max:60,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/7),3,6),(k,n)=>[b(4*M,5,'60–70','R7',k%2?'SS':'EP',`Tiro ${k}/${n} ${k%2?'sentado':'em pé'}, carga pesada, RPE 9`),b(3*M,1,'85–90','R2–R3','SP','Recupera, baixa a FC')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[fx(b(4*M,5,'60–70','R7',k%2?'SS':'EP',`Tiro ${k}/${n} ${k%2?'sentado':'em pé'}, carga pesada, RPE 9`)),b(3*M,1,'85–90','R2–R3','SP','Recupera, baixa a FC')],{min:3,max:6,smin:.8,smax:1.4}),...cool()]},
 {id:'v3015',nome:'30/15 Intermitente',cat:'VO₂',i:4,perna:0,foco:'Muito tempo acima de 90% da FCmáx com carga pesada',min:30,max:55,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/11.25),1,3),(s,ns)=>[...reps(11,(k)=>[b(30,5,'60–70','R7–R8',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/11 ${k%2?'em pé':'sentado'}, carga pesada`),b(15,1,'85','R2','SP','Solta 15 s')]),b(3*M,1,'85–90','R2','SP','Fim da série, respira')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(s,ns)=>[...reps(11,(k)=>[fx(b(30,5,'60–70','R7–R8',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/11 ${k%2?'em pé':'sentado'}, carga pesada`)),fx(b(15,1,'85','R2','SP','Solta 15 s'))]),b(3*M,1,'85–90','R2','SP','Fim da série, respira')],{max:3,smax:1.7}),...cool()]},
 {id:'v4020',nome:'Queima 40/20',cat:'VO₂',i:4,perna:0,foco:'Gasto calórico e tolerância ao lactato com carga',min:35,max:60,
- build:T=>{const r=T>=45?8:6;const n=clamp(Math.floor((T-15)/(r+3)),2,4);return[...warm(),...reps(n,(s,ns)=>[...reps(r,(k,rn)=>[b(40,5,'60–70','R7',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/${rn} ${k%2?'em pé':'sentado'}, empurra a carga`),b(20,1,'80','R2','SP','20 s de alívio')]),b(3*M,1,'85–90','R2','SP','Fim da série, bebe água')]),...cool()]}},
+ build:T=>{const r=T>=45?8:6;return[...warm(),...sc((T-12)*M,(s,ns)=>[...reps(r,(k,rn)=>[fx(b(40,5,'60–70','R7',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/${rn} ${k%2?'em pé':'sentado'}, empurra a carga`)),fx(b(20,1,'80','R2','SP','20 s de alívio'))]),b(3*M,1,'85–90','R2','SP','Fim da série, bebe água')],{min:2,max:4,smax:1.7}),...cool()]}},
 {id:'billat',nome:'Billat 30/30',cat:'VO₂',i:4,perna:0,foco:'VO₂ com recuperação ativa, segura mais repetições',min:30,max:60,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/14),1,3),(s,ns)=>[...reps(10,(k)=>[b(30,5,'60–70','R7–R8',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/10 ${k%2?'em pé':'sentado'}, carga pesada`),b(30,2,'90','R3','SP','30 s ativo, não para de girar')]),b(4*M,1,'85','R2','SP','Recupera')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(s,ns)=>[...reps(10,(k)=>[fx(b(30,5,'60–70','R7–R8',k%2?'EP':'SS',`Série ${s}/${ns} · ${k}/10 ${k%2?'em pé':'sentado'}, carga pesada`)),fx(b(30,2,'90','R3','SP','30 s ativo, não para de girar'))]),b(4*M,1,'85','R2','SP','Recupera')],{max:3,smax:1.5}),...cool()]},
 {id:'piramide',nome:'Pirâmide 1-2-3-4-3-2-1',cat:'VO₂',i:4,perna:0,foco:'Esforço crescente e decrescente, pausa de metade do tiro',min:40,max:55,
- build:T=>[...warm(),...[1,2,3,4,3,2,1].flatMap((e,k)=>[e<=2?b(e*M,5,'60–70','R7–R8','EP',`Degrau ${k+1}/7 · ${e} min em pé, carga pesada`):b(e*M,5,'65–75','R7','SS',`Degrau ${k+1}/7 · ${e} min sentado, segura a carga`),b(e*30,1,'85','R2','SP','Recupera metade do tempo')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,()=>[1,2,3,4,3,2,1].flatMap((e,k)=>[fx(e<=2?b(e*M,5,'60–70','R7–R8','EP',`Degrau ${k+1}/7 · ${e} min em pé, carga pesada`):b(e*M,5,'65–75','R7','SS',`Degrau ${k+1}/7 · ${e} min sentado, segura a carga`)),b(e*30,1,'85','R2','SP','Recupera, respira fundo')]),{max:1,smax:1.6}),...cool()]},
 {id:'tiros3',nome:'Tiros de 3 min',cat:'VO₂',i:4,perna:0,foco:'Blocos médios em VO₂ com pausa curta',min:35,max:60,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/5),4,8),(k,n)=>[b(3*M,5,'60–70','R7',k%2?'SS':'EP',`Tiro ${k}/${n} ${k%2?'sentado':'em pé'}, sustenta a carga`),b(2*M,1,'85','R2','SP','Recupera')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[fx(b(3*M,5,'60–70','R7',k%2?'SS':'EP',`Tiro ${k}/${n} ${k%2?'sentado':'em pé'}, sustenta a carga`)),b(2*M,1,'85','R2','SP','Recupera')],{min:4,max:8,smin:.75,smax:1.5}),...cool()]},
 {id:'tabata',nome:'Tabata Duplo',cat:'Sprint',i:4,perna:0,foco:'Anaeróbio curto e brutal, 20/10',min:35,max:50,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/8),2,4),(s,ns)=>[...reps(8,(k)=>[b(20,5,'110+','R6','SP',`Tabata ${s}/${ns} · ${k}/8, tudo`),b(10,1,'80','R2','SP','Solta')]),b(4*M,1,'85','R2','SP','Recupera')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(s,ns)=>[...reps(8,(k)=>[fx(b(20,5,'110+','R6','SP',`Tabata ${s}/${ns} · ${k}/8, tudo`)),fx(b(10,1,'80','R2','SP','Solta'))]),b(4*M,1,'85','R2','SP','Recupera')],{min:2,max:4,smin:.75,smax:1.5}),...cool()]},
 {id:'sprints',nome:'Sprints Neuromusculares',cat:'Sprint',i:4,perna:0,foco:'Potência pura em 15 s com recuperação completa',min:30,max:50,
- build:T=>[...warm(),...reps(clamp(Math.floor((T-15)/3),5,10),(k,n)=>[b(15,5,'máx','R7','EP',`Sprint ${k}/${n} em pé, máximo`),b(165,1,'85','R2','SP','Recupera total')]),...cool()]},
+ build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[fx(b(15,5,'máx','R7','EP',`Sprint ${k}/${n} em pé, máximo`)),b(165,1,'85','R2','SP','Recupera total')],{min:5,max:10,smin:.9,smax:1.4}),...cool()]},
 {id:'express',nome:'HIIT Express',cat:'Sprint',i:4,perna:0,foco:'Dia corrido: intensidade alta em pouco tempo',min:20,max:30,
- build:T=>[b(2*M,1,'85–90','R2','SP','Entra fácil'),b(2*M,2,'90–95','R3','SP','Acorda a perna'),...reps(T>=25?8:6,(k,n)=>[b(30,5,'100–110','R6','SP',`Tiro ${k}/${n}, forte`),b(60,1,'85','R2','SP','Solta 1 min')]),b(2*M,2,'90','R3','SP','Segura o giro'),...cool()]},
+ build:T=>[W(b(2*M,1,'85–90','R2','SP','Entra fácil')),W(b(2*M,2,'90–95','R3','SP','Acorda a perna')),...sc((T-8)*M,(k,n)=>[fx(b(30,5,'100–110','R6','SP',`Tiro ${k}/${n}, forte`)),b(60,1,'85','R2','SP','Solta')],{min:6,max:10,smin:.75,smax:1.5}),b(2*M,2,'90','R3','SP','Segura o giro'),...cool()]},
 {id:'teste',nome:'Teste Marco 12 min',cat:'Teste',i:4,perna:0,foco:'Medir evolução: RPM médio em R6 e queda de FC em 60 s',min:35,max:35,
  build:()=>[...warm(),b(3*M,2,'90','R3','SP','Últimos ajustes, trava a resistência em R6'),b(12*M,5,'máximo','R6 fixo','SP','TESTE: RPM mais alto que aguentar por 12 min'),b(M,1,'0','—','PA','Pare de pedalar. Anote a FC exatamente aos 60 s'),b(9*M,1,'80–85','R2','SP','Volta à calma longa')]},
 ];
