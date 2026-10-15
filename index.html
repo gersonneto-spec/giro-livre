@@ -205,6 +205,37 @@ nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:re
 .rpe{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .rpe .chip{padding:9px 0;text-align:center}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+kbd,.kbd-hint{display:none}
+@media (min-width:1000px) and (hover:hover){
+  .wrap{max-width:1180px;padding-inline:32px;padding-block:88px 48px}
+  nav.tabs{top:0;bottom:auto;border-top:0;border-bottom:1px solid var(--line);padding:8px 32px}
+  nav.tabs .in{max-width:1180px;display:flex;align-items:center;gap:4px}
+  nav.tabs .in::before{content:'GIRO LIVRE';font-family:var(--f-disp);font-weight:800;font-size:24px;letter-spacing:.02em;color:var(--ink);margin-right:auto}
+  .tab{flex-direction:row;gap:8px;font-size:14px;padding:10px 16px}
+  .tab[aria-selected="true"]{background:var(--surface2)}
+  h1{font-size:44px}
+  .wrap .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+  .wrap .list>.btn,.wrap .list>.empty{grid-column:1/-1}
+  .card:has(.cal){max-width:760px}
+  .scrim{align-items:center}
+  .sheet{border-radius:18px;max-height:86%}
+  .player:has(.band){display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-areas:"top top" "ask ask" "band qa" "band queue" "stats queue" "tip queue" "tl tl" "time time" "kbd kbd" "ctrl ctrl";grid-template-rows:auto auto auto auto auto 1fr auto auto auto auto;column-gap:28px;row-gap:14px;padding:24px max(40px,calc((100vw - 1280px)/2)) 24px;align-content:start}
+  .player:has(.band)>.pl-top{grid-area:top}
+  .player:has(.band)>.band{grid-area:band;justify-content:center;padding:28px}
+  .player:has(.band)>.stats{grid-area:stats}
+  .player:has(.band)>.tip{grid-area:tip;align-self:start}
+  .player:has(.band)>.qa{grid-area:qa;flex-wrap:wrap;overflow:visible;margin:0;padding:0}
+  .player:has(.band)>.ask{grid-area:ask}
+  .player:has(.band)>.queue{grid-area:queue;align-self:start}
+  .player:has(.band)>.tl{grid-area:tl}
+  .player:has(.band)>.row.between{grid-area:time}
+  .player:has(.band)>.kbd-hint{grid-area:kbd;display:block;font-size:13px;color:var(--muted);text-align:center}
+  .player:has(.band)>.ctrl{grid-area:ctrl;position:static;margin:0;padding:0;max-width:640px;justify-self:center;width:100%}
+  .player .clock{font-size:clamp(120px,13vw,220px)}
+  .player .cmd{font-size:24px}
+  .qa .btn{gap:8px}
+  kbd{display:inline-block;font:700 11px var(--f-body);padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+}
 </style>
 
 </head>
@@ -574,10 +605,11 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
     <div class="band"><div class="cd" id="pl-cd" hidden><span class="cd-l">Troca em</span><span class="cd-n" id="pl-cdn"></span><span class="cd-t" id="pl-cdt"></span></div><div class="row between"><span class="zname" id="pl-z"></span><span class="num muted" id="pl-k" style="font-weight:600"></span></div><div class="clock" id="pl-clock"></div><div class="cmd" id="pl-cmd"></div></div>
     <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
     <div class="tip" id="pl-tip"></div>
-    <div class="qa" id="pl-qa"><button class="btn sm pri" data-a="ask">Digitar pedido</button>${QA.map(([l,c])=>`<button class="btn sm" data-a="qa" data-v="${c}">${l}</button>`).join('')}</div>
+    <div class="qa" id="pl-qa"><button class="btn sm pri" data-a="ask">Digitar pedido</button>${QA.map(([l,c],i)=>`<button class="btn sm" data-a="qa" data-v="${c}">${l}<kbd>${i+1}</kbd></button>`).join('')}</div>
     <div class="ask" id="pl-ask" hidden><input id="adj-txt" type="text" placeholder="Ex.: reduzir descanso em 30 s" enterkeyhint="go" autocomplete="off"><button class="btn sm pri" data-a="adj-go">OK</button></div>
     <div class="queue" id="pl-q"></div>
     <div class="tl">${prof(P.bl)}<div class="mark" id="pl-mark"></div></div>
+    <div class="kbd-hint">Teclado: <b>Espaço</b> pausa · <b>← →</b> troca de bloco · <b>1 a 9</b> ajustes · <b>Ctrl+Z</b> desfaz</div>
     <div class="row between num" style="font-size:15px;font-weight:600"><span id="pl-el"></span><span id="pl-rem"></span></div>
     <div class="ctrl"><button class="btn" data-a="pl-prev" aria-label="Bloco anterior">◀ Anterior</button><button class="btn go" data-a="pl-play" id="pl-play"></button><button class="btn" data-a="pl-next" aria-label="Próximo bloco">Pular ▶</button></div>`}
   const $=id=>document.getElementById(id);
@@ -720,7 +752,8 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
     S.hist.push({id:'h'+Date.now().toString(36),ts:fromIso(g('mn-date')||today()).getTime(),date:g('mn-date')||today(),nome:g('mn-nome')||'Pedal livre',cat:'Livre',min:mn,kcal:Math.round(met*S.settings.peso*mn/60),z45:0,rpe:rp,nota:g('mn-nota').trim()});save();closeSheet();render();break}
   case'h-del':if(ui.hdel!==v){ui.hdel=v;render();break}S.hist=S.hist.filter(x=>x.id!==v);ui.hdel=null;save();render();break;
   }});
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='adj-txt'){e.preventDefault();adjDo(e.target.value);return}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.tap')){e.preventDefault();e.target.click()}if(e.key==='Escape'&&!P)closeSheet()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='adj-txt'){e.preventDefault();adjDo(e.target.value);return}
+  if(P&&!P.fin&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)){if(e.code==='Space'){e.preventDefault();plToggle();return}if(e.key==='ArrowRight'){e.preventDefault();plJump(1);return}if(e.key==='ArrowLeft'){e.preventDefault();plJump(-1);return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();adjUndo();return}if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&QA[+e.key-1]){adjDo(QA[+e.key-1][1]);return}}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.tap')){e.preventDefault();e.target.click()}if(e.key==='Escape'&&!P)closeSheet()});
 document.addEventListener('input',e=>{const t=e.target;
   if(t.dataset.in==='T'){ui.T=+t.value;document.getElementById('hoje-t-o').textContent=ui.T+' min';document.getElementById('sug').innerHTML=sugList()}
   else if(t.dataset.in==='libT'){ui.libT=+t.value;document.getElementById('lib-t-o').textContent=ui.libT+' min';document.getElementById('liblist').innerHTML=libList()}
