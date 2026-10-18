@@ -344,6 +344,11 @@ const TPL=[
  build:T=>[...warm(),...sc((T-12)*M,(k,n)=>[fx(b(15,5,'máx','R7','EP',`Sprint ${k}/${n} em pé, máximo`)),b(165,1,'85','R2','SP','Recupera total')],{min:5,max:10,smin:.9,smax:1.4}),...cool()]},
 {id:'express',nome:'HIIT Express',cat:'Sprint',i:4,perna:0,foco:'Dia corrido: intensidade alta em pouco tempo',min:20,max:30,
  build:T=>[W(b(2*M,1,'85–90','R2','SP','Entra fácil')),W(b(2*M,2,'90–95','R3','SP','Acorda a perna')),...sc((T-8)*M,(k,n)=>[fx(b(30,5,'100–110','R6','SP',`Tiro ${k}/${n}, forte`)),b(60,1,'85','R2','SP','Solta')],{min:6,max:10,smin:.75,smax:1.5}),b(2*M,2,'90','R3','SP','Segura o giro'),...cool()]},
+{id:'hiitcarga',nome:'HIIT Carga · Sobe e Desce',cat:'Sprint',i:4,perna:0,foco:'Tiros pesados no limite da manopla, giro baixo; a carga sobe até o topo e desce',min:20,max:35,
+ build:T=>[W(b(2*M,1,'85–90','R2','SP','Entra fácil')),W(b(2*M,2,'88–92','R4','SP','Acorda a perna com carga média')),W(b(M,3,'75–80','R6','SS','Ensaio da subida: sente a carga, sem forçar')),
+  ...sc((T-9)*M,(k,n)=>{const lv=Math.min(8,6+Math.min(k-1,n-k)),top=lv>=8,fase=k<=n/2?'Subindo':'Descendo';
+   return[fx(b(40,5,top?'55–65':lv===7?'60–70':'65–75','R'+lv,top?'EP':'SS',`${fase} ${k}/${n} · ${top?'topo em pé, no limite: carga máxima que ainda gira':lv===7?'rampa forte sentado, empurra pesado':'início da rampa sentado, empurra firme'}`)),b(80,1,'90–100','R2','SP','Descida: alivia a manopla e gira solto, respira')]},{min:6,max:12,smin:.6,smax:1.5}),
+  b(2*M,2,'90','R3','SP','Plano: segura o giro, baixa a FC'),...cool()]},
 {id:'teste',nome:'Teste Marco 12 min',cat:'Teste',i:4,perna:0,foco:'Medir evolução: RPM médio em R6 e queda de FC em 60 s',min:35,max:35,
  build:()=>[...warm(),b(3*M,2,'90','R3','SP','Últimos ajustes, trava a resistência em R6'),b(12*M,5,'máximo','R6 fixo','SP','TESTE: RPM mais alto que aguentar por 12 min'),b(M,1,'0','—','PA','Pare de pedalar. Anote a FC exatamente aos 60 s'),b(9*M,1,'80–85','R2','SP','Volta à calma longa')]},
 ];
@@ -412,7 +417,7 @@ const FOCOS={equilibrado:{nome:'Equilibrado',p:['vo2','base','limiar','recbase',
   leve:{nome:'Semana leve',p:['base','recbase','tempo','ativa','base','longo','ativa'],k:.75}};
 const SLOTS={vo2:['vo2','v3015','billat','piramide','tiros3'],base:['base','basecad','estrada','pircad','drills'],
   limiar:['sweet','overunder','limiar','tempo','subida','escada','forca'],tempo:['tempo','escada','pircad'],
-  recbase:['basecad','drills','fatmax','regen','pircad'],hiit:['v4020','tabata','sprints','express','montanha'],
+  recbase:['basecad','drills','fatmax','regen','pircad'],hiit:['v4020','tabata','sprints','express','montanha','hiitcarga'],
   longo:['estrada','fatmax','montanha','polar'],ativa:['ativa','regen','flush'],perna:['flush','regen','fatmax','drills']};
 const SLOTN={vo2:'VO₂',base:'Base',limiar:'Limiar',tempo:'Tempo',recbase:'Base leve',hiit:'HIIT',longo:'Longo',ativa:'Recuperação',perna:'Pós-perna'};
 const rnd=a=>a[Math.floor(Math.random()*a.length)];
@@ -677,7 +682,7 @@ let voz=true;try{voz=localStorage.getItem('gl_voz')!=='0'}catch(e){}
 /* ---------- Ajustar treino em andamento ---------- */
 const nrm=s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/₂/g,'2');
 const isCool=x=>/^Volta à calma/.test(x.c);
-const ALIAS=[['hit','express'],['hiit','express'],['express','express'],['tabata','tabata'],['4x4','vo2'],['noruegues','vo2'],['30/15','v3015'],['30 15','v3015'],['40/20','v4020'],['40 20','v4020'],['queima','v4020'],['billat','billat'],['piramide','piramide'],['tiros de 3','tiros3'],['sprint','sprints'],['subida','subida'],['escada','escada'],['forca','forca'],['limiar','limiar'],['sweet','sweet'],['over','overunder'],['montanha','montanha'],['tempo','tempo'],['regenerativ','regen'],['mobilidade','ativa'],['cadencia','basecad'],['drill','drills']];
+const ALIAS=[['hiit carga','hiitcarga'],['hit carga','hiitcarga'],['sobe e desce','hiitcarga'],['carga pesada','hiitcarga'],['hit','express'],['hiit','express'],['express','express'],['tabata','tabata'],['4x4','vo2'],['noruegues','vo2'],['30/15','v3015'],['30 15','v3015'],['40/20','v4020'],['40 20','v4020'],['queima','v4020'],['billat','billat'],['piramide','piramide'],['tiros de 3','tiros3'],['sprint','sprints'],['subida','subida'],['escada','escada'],['forca','forca'],['limiar','limiar'],['sweet','sweet'],['over','overunder'],['montanha','montanha'],['tempo','tempo'],['regenerativ','regen'],['mobilidade','ativa'],['cadencia','basecad'],['drill','drills']];
 function findT(t){for(const [k,id] of ALIAS)if(t.includes(k))return id;let best=null,sc=0;for(const m of TPL){const w=nrm(m.nome).split(/[^a-z0-9]+/).filter(x=>x.length>2);const h=w.filter(x=>t.includes(x)).length/(w.length||1);if(h>sc){sc=h;best=m.id}}return sc>=.5?best:null}
 function coolAt(){for(let j=P.idx+1;j<P.bl.length;j++)if(isCool(P.bl[j]))return j;return P.bl.length}
 function rests(){const r=[];for(let j=P.idx;j<P.bl.length;j++){const x=P.bl[j];if(x.z<=2&&!isCool(x)&&((P.bl[j-1]&&P.bl[j-1].z>=4)||(P.bl[j+1]&&P.bl[j+1].z>=4)))r.push(j)}return r}
@@ -701,7 +706,7 @@ function runCmd(raw){if(!P)return null;const t=nrm(raw),sec=+((t.match(/(\d+)\s*
   if(/(mais|estend|aument|prolong)/.test(t)&&mi){const at=coolAt();P.bl.splice(at,0,b(mi*M,2,'90','R3','SP','Bloco extra, ritmo constante'));return`+${mi} min em Z2 antes da volta à calma.`}
   if(/pul|proximo/.test(t)){plJump(1);return'Pulei para o próximo bloco.'}
   return null}
-const QA=[['− Descanso','reduzir descanso'],['+ Descanso','aumentar descanso'],['+ Carga','aumentar carga'],['− Carga','diminuir carga'],['+1 tiro','mais um tiro'],['−1 tiro','menos um tiro'],['+5 min','mais 5 min'],['+ HIIT Express','incluir hiit express'],['Encerrar tiros','ir para volta à calma']];
+const QA=[['− Descanso','reduzir descanso'],['+ Descanso','aumentar descanso'],['+ Carga','aumentar carga'],['− Carga','diminuir carga'],['+1 tiro','mais um tiro'],['−1 tiro','menos um tiro'],['+5 min','mais 5 min'],['+ HIIT Express','incluir hiit express'],['+ HIIT Carga','incluir hiit carga'],['Encerrar tiros','ir para volta à calma']];
 let UNDO=null,toastT=null;
 const plTot=()=>P.el+P.left+sum(P.bl.slice(P.idx+1));
 function toast(title,sub,undo,err){const el=document.getElementById('pl-toast');if(!el)return;clearTimeout(toastT);el.className='toast'+(err?' err':'');
