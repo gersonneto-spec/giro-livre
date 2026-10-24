@@ -184,6 +184,7 @@ nav.tabs .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:re
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;min-width:0}
 .stat span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .stat b{display:block;font-family:var(--f-disp);font-size:26px;font-weight:800;line-height:1.05;overflow-wrap:anywhere}
+.stat .kmh{display:block;font-style:normal;font-size:14px;font-weight:700;color:var(--muted);margin-top:2px}
 .stat b.sm{font-size:17px;font-family:var(--f-body);font-weight:700;line-height:1.25}
 .next{font-size:14px;color:var(--muted)}
 .band{position:relative;overflow:hidden}
@@ -560,12 +561,13 @@ function vBib(){let h=header('Biblioteca',`${TPL.length} modelos que se ajustam 
   <div class="tbl" style="margin-top:12px"><table><thead><tr><th>Nível</th><th>Como achar na manopla</th></tr></thead><tbody>
   <tr><td><b>R2</b></td><td>90 rpm quase sem carga</td></tr><tr><td><b>R3</b></td><td>90 rpm respirando só pelo nariz</td></tr><tr><td><b>R4</b></td><td>90 rpm conversando em frases inteiras</td></tr>
   <tr><td><b>R5</b></td><td>100 rpm por 1 min já queima</td></tr><tr><td><b>R6</b></td><td>80 rpm, respiração pesada</td></tr><tr><td><b>R7</b></td><td>70 rpm subida sentado, não consegue falar</td></tr></tbody></table></div>
-  <div class="muted" style="font-size:13px;margin-top:8px">Marque as posições da manopla com fita. kcal estimadas por MET da zona × peso.</div></details></section>`;
+  <div class="tbl" style="margin-top:12px"><table><thead><tr><th class="num">Cadência</th><th class="num">Velocidade no monitor</th></tr></thead><tbody>${[60,70,80,90,100,110,120].map(v=>`<tr><td class="num"><b>${v} rpm</b></td><td class="num">${kmt(v)}</td></tr>`).join('')}</tbody></table></div>
+  <div class="muted" style="font-size:13px;margin-top:8px">Velocidade no monitor = rpm ÷ 7. Marque as posições da manopla com fita. kcal estimadas por MET da zona × peso.</div></details></section>`;
   return h}
 function libList(){const l=TPL.filter(t=>(!ui.libI||t.i===ui.libI)&&(!ui.libCat||t.cat===ui.libCat)&&(!ui.libCond||condOk(t,ui.libCond)));
   if(!l.length)return`<div class="empty">Nenhum modelo com esses filtros.</div>`;return l.map(t=>cardW({src:'t',id:t.id,min:ui.libT})).join('')}
 function blocksTable(bl){let t=0;return`<div class="tbl"><table><thead><tr><th class="num">Início</th><th class="num">Dura</th><th>Zona</th><th class="num">RPM</th><th>R</th><th>Comando</th></tr></thead><tbody>${bl.map(x=>{const s=t;t+=x.d;
-  return`<tr><td class="num">${fmt(s)}</td><td class="num">${fmt(x.d)}</td><td>${zp(x.z)}</td><td class="num">${esc(x.rpm)}</td><td class="num">${esc(x.r)}</td><td>${esc(x.c)}<div class="muted" style="font-size:12px">${esc(x.p)}</div></td></tr>`}).join('')}</tbody></table></div>`}
+  return`<tr><td class="num">${fmt(s)}</td><td class="num">${fmt(x.d)}</td><td>${zp(x.z)}</td><td class="num">${esc(x.rpm)}${kmh(x.rpm)?`<div class="muted" style="font-size:12px">${kmt(x.rpm)}</div>`:''}</td><td class="num">${esc(x.r)}</td><td>${esc(x.c)}<div class="muted" style="font-size:12px">${esc(x.p)}</div></td></tr>`}).join('')}</tbody></table></div>`}
 function sheetDetail(ref){const w=getW(ref);if(!w)return;const t=w.t;ui.det=ref;
   let h=`<div class="sheet-h"><div><div class="eyebrow">${esc(w.cat)} · ${INT[w.i]}${w.perna?' · serve pós-perna':''}</div><h2 style="margin-top:4px">${esc(w.nome)}</h2><div class="foco">${esc(w.foco)}</div></div><button class="x" data-a="close" aria-label="Fechar">×</button></div>
   ${prof(w.blocks,'lg')}${metaLine(w)}`;
@@ -654,7 +656,7 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
   const passed=sum(P.bl.slice(0,P.idx))+(k.d-P.left);el.style.setProperty('--cur',`var(--z${k.z})`);
   if(full||!el.querySelector('.clock')){el.innerHTML=`<div class="toast" id="pl-toast" hidden></div><div class="pl-top"><div style="min-width:0"><div class="eyebrow" id="pl-sub"></div><div class="nm">${esc(P.w.nome)}</div></div><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-a="pl-end">Encerrar</button></div></div>
     <div class="band"><div class="cd" id="pl-cd" hidden><span class="cd-l">Troca em</span><span class="cd-n" id="pl-cdn"></span><span class="cd-t" id="pl-cdt"></span></div><div class="row between"><span class="zname" id="pl-z"></span><span class="num muted" id="pl-k" style="font-weight:600"></span></div><div class="clock" id="pl-clock"></div><div class="cmd" id="pl-cmd"></div></div>
-    <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
+    <div class="stats"><div class="stat"><span>RPM</span><b class="num" id="pl-rpm"></b><em class="kmh num" id="pl-kmh"></em></div><div class="stat"><span>Resistência</span><b class="num" id="pl-r"></b></div><div class="stat"><span>Posição</span><b class="sm" id="pl-p"></b></div></div>
     <div class="tip" id="pl-tip"></div>
     <div class="qa" id="pl-qa"><button class="btn sm pri" data-a="ask">Digitar pedido</button>${QA.map(([l,c],i)=>`<button class="btn sm" data-a="qa" data-v="${c}">${l}<kbd>${i+1}</kbd></button>`).join('')}</div>
     <div class="ask" id="pl-ask" hidden><input id="adj-txt" type="text" placeholder="Ex.: reduzir descanso em 30 s" enterkeyhint="go" autocomplete="off"><button class="btn sm pri" data-a="adj-go">OK</button></div>
@@ -666,16 +668,18 @@ function drawPlayer(full){const el=document.getElementById('player');if(!el||!P)
   const $=id=>document.getElementById(id);
   $('pl-sub').textContent=`${P.run?'Em andamento':(P.el>0?'Pausado':'Pronto para começar')} · ${fmt(P.el)} de ${fmt(plTot())}`;
   $('pl-z').textContent=k.p===POS.FB?'Fora da bike':`Z${k.z} · ${ZN[k.z]}`;$('pl-k').textContent=`Bloco ${P.idx+1}/${P.bl.length}`;
-  $('pl-clock').textContent=fmt(Math.ceil(P.left));$('pl-cmd').textContent=k.c;$('pl-rpm').textContent=k.rpm;$('pl-r').textContent=k.r;$('pl-p').textContent=k.p;
-  {const rt=rpmTip(k.rpm);$('pl-tip').innerHTML=k.p===POS.FB?`<span>${esc(k.c)}</span>`:`<span><b>Esforço RPE ${ZRPE[k.z]}</b> · ${ZFEEL[k.z]}</span>${rt?`<span><b>Cadência ${esc(k.rpm)} rpm</b> · ${rt}</span>`:''}`}
+  $('pl-clock').textContent=fmt(Math.ceil(P.left));$('pl-cmd').textContent=k.c;$('pl-rpm').textContent=k.rpm;$('pl-kmh').textContent=kmh(k.rpm)?'≈ '+kmt(k.rpm):'';$('pl-r').textContent=k.r;$('pl-p').textContent=k.p;
+  {const rt=rpmTip(k.rpm);$('pl-tip').innerHTML=k.p===POS.FB?`<span>${esc(k.c)}</span>`:`<span><b>Esforço RPE ${ZRPE[k.z]}</b> · ${ZFEEL[k.z]}</span>${rt?`<span><b>Cadência ${esc(k.rpm)} rpm${kmh(k.rpm)?' ≈ '+kmt(k.rpm):''}</b> · ${rt}</span>`:''}`}
   const qs=P.bl.slice(P.idx+1,P.idx+4);let acc=P.left;
-  $('pl-q').innerHTML=qs.length?'<div class="eyebrow">Próximos blocos</div>'+qs.map(x=>{const st=acc;acc+=x.d;return`<div class="qi" style="border-left-color:var(--z${x.z})"><span class="num t">em ${fmt(Math.ceil(st))}</span><span class="zp" style="background:var(--z${x.z})">Z${x.z}</span><div><b class="num">${fmt(x.d)} · ${esc(x.r)} · ${esc(x.rpm)} rpm</b> · ${esc(x.p)}<div class="muted" style="font-size:13px">${esc(x.c)}</div></div></div>`}).join(''):'<div class="next"><b>Último bloco.</b> Termina e registra.</div>';
-  {const cs=Math.ceil(P.left),sh=P.run&&k.d>=15&&cs<=5&&cs>=1,c=$('pl-cd');c.hidden=!sh;if(sh){c.style.setProperty('--nx',nx?`var(--z${nx.z})`:'var(--z2)');$('pl-cdn').textContent=cs;$('pl-cdt').textContent=nx?(nx.p===POS.FB?'Fora da bike · '+nx.c:`Z${nx.z} · ${nx.r} · ${nx.rpm} rpm · ${nx.p}`):'Fim do treino'}}
+  $('pl-q').innerHTML=qs.length?'<div class="eyebrow">Próximos blocos</div>'+qs.map(x=>{const st=acc;acc+=x.d;return`<div class="qi" style="border-left-color:var(--z${x.z})"><span class="num t">em ${fmt(Math.ceil(st))}</span><span class="zp" style="background:var(--z${x.z})">Z${x.z}</span><div><b class="num">${fmt(x.d)} · ${esc(x.r)} · ${esc(x.rpm)} rpm${kmh(x.rpm)?' · '+kmt(x.rpm):''}</b> · ${esc(x.p)}<div class="muted" style="font-size:13px">${esc(x.c)}</div></div></div>`}).join(''):'<div class="next"><b>Último bloco.</b> Termina e registra.</div>';
+  {const cs=Math.ceil(P.left),sh=P.run&&k.d>=15&&cs<=5&&cs>=1,c=$('pl-cd');c.hidden=!sh;if(sh){c.style.setProperty('--nx',nx?`var(--z${nx.z})`:'var(--z2)');$('pl-cdn').textContent=cs;$('pl-cdt').textContent=nx?(nx.p===POS.FB?'Fora da bike · '+nx.c:`Z${nx.z} · ${nx.r} · ${nx.rpm} rpm${kmh(nx.rpm)?' · '+kmt(nx.rpm):''} · ${nx.p}`):'Fim do treino'}}
   $('pl-mark').style.left=(passed/tot*100)+'%';{const rem=P.left+sum(P.bl.slice(P.idx+1));$('pl-el').textContent=`Treino ${fmt(P.el)} de ${fmt(P.el+rem)}`;$('pl-rem').textContent=`faltam ${fmt(rem)}`}
   $('pl-play').textContent=P.run?'Pausar':(P.el>0?'Continuar':'Começar')}
 const ZRPE={1:'2–3',2:'4–5',3:'6–7',4:'8',5:'9–10'};
 const ZFEEL={1:'Leve. Respira pelo nariz e conversa fácil.',2:'Confortável. Fala frases inteiras, a perna não queima.',3:'Firme. Frases curtas, a perna começa a esquentar.',4:'Perna queimando e fadigada. Fala 3 a 4 palavras, aguenta alguns minutos.',5:'Muito pesado. Não consegue falar, perna pesada, segura só até o fim do tiro.'};
 const RPED={1:'Quase nada, como ficar sentado.',2:'Muito leve, aquecimento solto.',3:'Leve, respira pelo nariz.',4:'Moderado, conversa normal.',5:'Moderado firme, ainda fala frases inteiras.',6:'Firme, frases curtas, suor começando.',7:'Forte, perna esquentando, fala poucas palavras.',8:'Muito forte, perna queimando e fadigada, só 3 a 4 palavras.',9:'Quase máximo, não fala, perna pesada.',10:'Máximo, não aguentaria nem mais 10 segundos.'};
+const KM=1/7;function kmh(r){r=String(r);if(/máx/.test(r))return'';const n=r.match(/\d+/g);if(!n||+n[0]<30)return'';const f=v=>(v*KM).toFixed(1).replace('.',',');return n.slice(0,2).map(f).join('–')+(/\+/.test(r)?'+':'')}
+const kmt=r=>{const k=kmh(r);return k?k+' km/h':''};
 function rpmTip(r){r=String(r);if(/máx/.test(r))return'o mais rápido que conseguir, sem quicar no selim';const n=r.match(/\d+/g);if(!n||+n[0]===0)return'';
   const a=Math.round(n[0]/6),c=n[1]?Math.round(n[1]/6):a;return`≈ ${a}${c!==a?'–'+c:''}${/\+/.test(r)?'+':''} pedaladas a cada 10 s. Conte só a perna direita.`}
 let voz=true;try{voz=localStorage.getItem('gl_voz')!=='0'}catch(e){}
